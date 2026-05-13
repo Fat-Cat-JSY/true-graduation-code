@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>电商男鞋销售数据分析大屏</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    * {margin: 0; padding: 0; box-sizing: border-box;}
+    html {
+      height: 100%;
+      overflow-y: auto;
+    }
+    body {width: 100%; min-height: 100%; background: #0a1230; color: #fff; font-family: "Microsoft Yahei", sans-serif; padding-bottom: 30px;}
+    .header {
+      width: 100%;
+      height: 70px;
+      line-height: 70px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+      border-bottom: 1px solid #1fb2ff;
+      position: relative;
+      background: #0a1230;
+    }
+    .jump-btn {
+      position: absolute;
+      right: 30px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 10px 24px;
+      background: linear-gradient(90deg, #1fb2ff, #36cfc9);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .jump-btn:hover {opacity: 0.8;}
+    .container {
+      width: 96%;
+      margin: 20px auto;
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .bottom-container {
+      width: 96%;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr 1fr;
+      gap: 20px;
+    }
+    .chart-card {
+      width: 100%;
+      height: 420px;
+      border: 1px solid #1fb2ff;
+      border-radius: 6px;
+      background: rgba(31, 178, 255, 0.05);
+      overflow: hidden;
+    }
+    .chart-title {
+      height: 40px;
+      line-height: 40px;
+      text-align: center;
+      font-size: 18px;
+      border-bottom: 1px solid #1fb2ff;
+      background: rgba(31, 178, 255, 0.1);
+    }
+    .chart-box {width: 100%; height: calc(100% - 40px);}
+    .bottom-chart {height: 380px;}
+  </style>
+</head>
+<body>
+  <div class="header">
+      电商平台男鞋销售数据分析大屏
+<button class="jump-btn" onclick="window.location.href='/predict'">进入聚类预测 →</button>
+  </div>
+
+  <div class="container">
+    <div class="chart-card">
+      <div class="chart-title">价格-月销量-退货率分布</div>
+      <div id="chart1" class="chart-box"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">各品牌总月销量与平均退货率</div>
+      <div id="chart2" class="chart-box"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">各省份男鞋购买量与总销售额</div>
+      <div id="chart3" class="chart-box"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">不同鞋面材质总销量</div>
+      <div id="chart4" class="chart-box"></div>
+    </div>
+  </div>
+
+  <div class="bottom-container">
+    <div class="chart-card bottom-chart">
+      <div class="chart-title">不同品牌的平均价格、退货率</div>
+      <div id="chart5" class="chart-box"></div>
+    </div>
+    <div class="chart-card bottom-chart">
+      <div class="chart-title">用户群体购买占比（按性别/会员）</div>
+      <div id="chart6" class="chart-box"></div>
+    </div>
+    <div class="chart-card bottom-chart">
+      <div class="chart-title">不同下单时段订单量</div>
+      <div id="chart7" class="chart-box"></div>
+    </div>
+  </div>
+
+<script>
+const chart1 = echarts.init(document.getElementById('chart1'));
+const chart2 = echarts.init(document.getElementById('chart2'));
+const chart3 = echarts.init(document.getElementById('chart3'));
+const chart4 = echarts.init(document.getElementById('chart4'));
+const chart5 = echarts.init(document.getElementById('chart5'));
+const chart6 = echarts.init(document.getElementById('chart6'));
+const chart7 = echarts.init(document.getElementById('chart7'));
+
+// 获取价格-商品数量-退货率分布数据
+fetch('/api/train_scatter')
+.then(res => {
+  if(!res.ok) throw new Error('接口请求错误：' + res.statusText);
+  return res.json();
+})
+.then(result => {
+  const scatterData = result.data.map(item => [item.x, item.y, item.z]);
+  chart1.setOption({
+    grid: {left: '15%', right: '10%', bottom: '15%', top: '15%'},
+    title: {
+      text: '价格区间-月销量-退货率分布',
+      left: 'center',
+      textStyle: {color: '#fff', fontSize: 18}
+    },
+    xAxis: {
+      type: 'value',
+      name:'价格区间(元)',
+      nameTextStyle:{color:'#fff', fontSize:13},
+      axisLabel:{color:'#fff', fontSize:12,
+        formatter: function(value) {
+          if (value == 50) return "0-100元";
+          if (value == 150) return "100-200元";
+          if (value == 250) return "200-300元";
+          if (value == 350) return "300元以上";
+          return value;
+        }
+      },
+      axisLine:{lineStyle:{color:'#1fb2ff'}},
+      splitLine: {show: false}
+    },
+    yAxis: {
+      type: 'value',
+      name:'月销量(个)',
+      nameTextStyle:{color:'#fff', fontSize:13},
+      axisLabel:{color:'#fff', fontSize:12},
+      axisLine:{lineStyle:{color:'#1fb2ff'}},
+      splitNumber: 5
+    },
+    // 退货率颜色映射（红蓝渐变）
+    visualMap: {
+      min: 48,
+      max: 54,
+      calculable: true,
+      inRange: {color: ['#1fb2ff', '#ff4d4f']},
+      text: ['退货率高(%)','退货率低'],
+      textStyle: {color: '#fff'},
+      left: 10,
+      top: 'center'
+    },
+    tooltip: {
+      formatter: function(params) {
+        const xVal = params.value[0];
+        let priceBin = '';
+        if (xVal === 50) priceBin = '0-100元';
+        else if (xVal === 150) priceBin = '100-200元';
+        else if (xVal === 250) priceBin = '200-300元';
+        else if (xVal === 350) priceBin = '300元以上';
+
+        return `价格区间：${priceBin}<br/>
+                月销量：${params.value[1].toFixed(0)}个<br/>
+                退货率：${params.value[2].toFixed(2)}%`;
+      },
+      backgroundColor: 'rgba(10, 18, 48, 0.9)'
+    },
+    series: [
+      {
+        name: "价格区间统计",
+        type: 'scatter',
+        data: scatterData,
+        symbolSize: 40,  // 缩小符号大小，避免重叠
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#fff'
+        }
+        // 已去除 markLine
+      }
+    ]
+  });
+})
+.catch(err => {
+  console.error('图表加载错误：', err);
+  alert('图表加载失败：' + err.message);
+});
+
+// 获取品牌分析数据
+fetch('/api/dashboard/brand')
+.then(res => res.json())
+.then(result => {
+  const brandData = result.data;
+  chart2.setOption({
+    tooltip: {trigger: 'axis', axisPointer: {type: 'cross'}, backgroundColor: 'rgba(10, 18, 48, 0.9)'},
+    legend: {data:['总月销量','退货率'], textStyle:{color:'#fff', fontSize:14}, top: 10},
+    grid: {left: '10%', right: '10%', bottom: '15%', top: '15%'},
+    xAxis: {
+      type: 'category',
+      data: brandData.map(i=>i.brand),
+      axisLabel:{color:'#fff', fontSize:13, rotate: 30},
+      axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    yAxis: [
+      {
+        type: 'value', name: '总月销量', min:800, nameTextStyle:{color:'#fff'},
+        axisLabel:{color:'#fff'}, axisLine:{lineStyle:{color:'#1fb2ff'}}
+      },
+      {
+        type: 'value', name: '退货率', min:0.2, max:1, nameTextStyle:{color:'#fff'},
+        axisLabel:{color:'#fff', formatter: '{value}'}, axisLine:{lineStyle:{color:'#36cfc9'}}
+      }
+    ],
+    series: [
+      {
+        name:'总月销量', type:'bar', data: brandData.map(i=>i.goods_count),
+        itemStyle:{
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: '#1fb2ff'},{offset: 1, color: '#0f1941'}]),
+          borderRadius: [4, 4, 0, 0]
+        }, barWidth: '60%'
+      },
+      {name:'退货率', type:'line', yAxisIndex:1, data: brandData.map(i=>i.return_rate), itemStyle:{color:'#36cfc9'}, symbol: 'circle', symbolSize: 6}
+    ]
+  });
+});
+
+// 获取省份数据
+fetch('/api/dashboard/province')
+.then(res => res.json())
+.then(result => {
+  const provinceData = result.data;
+  chart3.setOption({
+    tooltip: {trigger: 'axis', backgroundColor: 'rgba(10, 18, 48, 0.9)'},
+    legend: {data:['购买量','总销售额'], textStyle:{color:'#fff'}, top: 10},
+    grid: {left: '10%', right: '12%', bottom: '15%', top: '18%'},
+    xAxis: {
+      type: 'category', data: provinceData.map(i=>i.province),
+      axisLabel:{color:'#fff', rotate: 30}, axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    yAxis: [
+      {
+        type: 'value', name: '购买量', min: 950, nameTextStyle:{color:'#fff'},
+        axisLabel:{color:'#fff'}, axisLine:{lineStyle:{color:'#1fb2ff'}}
+      },
+      {
+        type: 'value', name: '总销售额(元)', min: 950000, nameTextStyle:{color:'#fff'},
+        axisLabel:{color:'#fff'}, axisLine:{lineStyle:{color:'#ff9500'}}
+      }
+    ],
+    series: [
+      {
+        name:'购买量', type:'bar', data: provinceData.map(i=>i.order_count),
+        itemStyle:{color: new echarts.graphic.LinearGradient(0,0,0,1, [{offset:0, color:'#1fb2ff'}, {offset:1, color:'#0a1230'}]), borderRadius: [3,3,0,0]},
+        barWidth: '50%'
+      },
+      {name:'总销售额', type:'line', yAxisIndex:1, data: provinceData.map(i=>i.total_sale), itemStyle:{color:'#ff9500'}, symbolSize: 8}
+    ]
+  });
+});
+
+// 获取材质分析数据
+fetch('/api/dashboard/material')
+.then(res => res.json())
+.then(result => {
+  const materialData = result.data;
+  chart4.setOption({
+    tooltip: {
+      trigger: 'axis',
+      formatter: info => `${info[0].name}<br/>月销量：${info[0].value.toLocaleString()}`,
+      backgroundColor: 'rgba(10, 18, 48, 0.9)'
+    },
+    grid: {left: '12%', right: '10%', bottom: '20%', top: '15%'},
+    xAxis: {
+      type: 'category',
+      data: materialData.map(i=>i.upper_material).filter(v => v),
+      axisLabel:{color:'#fff', fontSize:13, rotate: 25},
+      axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    yAxis: {
+      type: 'value',
+      name: '月销量',
+      min: 'auto',
+      nameTextStyle:{color:'#fff'},
+      min: 1000,
+      axisLabel:{color:'#fff'},
+      axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    series: [{
+      name:'月销量',
+      type:'bar',
+      data: materialData.map(i=>i.goods_count).filter((v,i) => materialData[i].upper_material),
+      itemStyle:{
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: '#1fb2ff'},{offset: 1, color: '#0f1941'}]),
+        borderRadius: [4, 4, 0, 0]
+      },
+      barWidth: '70%',
+      label: {
+        show: true,
+        position: 'top',
+        color: '#fff',
+        fontSize: 12,
+        formatter: '{c}'
+      }
+    }],
+    title: {
+      text: '不同鞋面材质月销量',
+      left: 'center',
+      textStyle: {color: '#fff', fontSize: 14}
+    }
+  });
+});
+
+// 获取品牌分析数据（图表5：平均价格与退货率）
+fetch('/api/dashboard/brand')
+.then(res => res.json())
+.then(result => {
+  const brandData = result.data;
+  chart5.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(10, 18, 48, 0.9)',
+      formatter: function(params) {
+        let result = params[0].name + '<br/>';
+        params.forEach(function(item) {
+          if (item.seriesName === '平均价格') {
+            result += item.seriesName + '：' + item.value.toFixed(2) + ' 元<br/>';
+          } else if (item.seriesName === '退货率') {
+            result += item.seriesName + '：' + (item.value * 100).toFixed(2) + '%<br/>';
+          }
+        });
+        return result;
+      }
+    },
+    legend: {
+      data:['平均价格','退货率'],
+      textStyle:{color:'#fff', fontSize:14},
+      top: 5
+    },
+    grid: {
+      left: '12%',
+      right: '12%',
+      bottom: '15%',
+      top: '20%'
+    },
+    xAxis: {
+      type: 'category',
+      data: brandData.map(i=>i.brand),
+      axisLabel:{color:'#fff', fontSize:12, rotate: 30},
+      axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '平均价格(元)',
+        min: 150,
+        max: 165,
+        nameTextStyle:{color:'#fff'},
+        axisLabel:{color:'#fff'},
+        axisLine:{lineStyle:{color:'#1fb2ff'}},
+        splitNumber: 5
+      },
+      {
+        type: 'value',
+        name: '退货率',
+        min: 0.47,
+        max: 0.55,
+        nameTextStyle:{color:'#fff'},
+        axisLabel:{
+          color:'#fff',
+          formatter: function(value) {
+            return (value * 100).toFixed(0) + '%';
+          }
+        },
+        axisLine:{lineStyle:{color:'#36cfc9'}},
+        splitNumber: 4
+      }
+    ],
+    series: [
+      {
+        name:'平均价格',
+        type:'bar',
+        data: brandData.map(i=>i.avg_price),
+        itemStyle:{
+          color: new echarts.graphic.LinearGradient(0,0,0,1, [
+            {offset:0, color:'#ff9500'},
+            {offset:1, color:'#0a1230'}
+          ]),
+          borderRadius: [3,3,0,0]
+        },
+        barWidth: '55%'
+      },
+      {
+        name:'退货率',
+        type:'line',
+        yAxisIndex:1,
+        data: brandData.map(i=>i.return_rate),
+        itemStyle:{color:'#36cfc9'},
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {width: 2}
+      }
+    ]
+  });
+});
+
+// 获取用户分析数据
+fetch('/api/dashboard/user')
+.then(res => res.json())
+.then(result => {
+  const userFullData = result.data;
+  const pieData = userFullData.map(item => ({
+    name: `${item.user_gender}-${item.is_plus === '是' ? '会员' : '非会员'}`,
+    value: item.order_count,
+    rate: item.return_rate,
+    age: item.avg_user_age
+  }));
+  const colorList = ['#1fb2ff','#73d13d','#ff9500','#ff4d4f'];
+  chart6.setOption({
+    tooltip: {
+      trigger: 'item',
+      formatter: (p) => `${p.name}<br/>购买量：${p.value}<br/>退货率：${(p.data.rate*100).toFixed(2)}%<br/>平均年龄：${p.data.age}`,
+      backgroundColor: 'rgba(10, 18, 48, 0.9)'
+    },
+    legend: {
+      orient: 'vertical',
+      right: 10,
+      top: 'center',
+      textStyle:{color:'#fff', fontSize:13}
+    },
+    graphic: [{
+      type: 'text',
+      left: '37%',
+      top: '48%',
+      style: {
+        text: '总购买量\n' + pieData.reduce((a,c)=>a+c.value,0).toLocaleString(),
+        textAlign: 'center',
+        fill: '#fff',
+        fontSize: 15
+      }
+    }],
+    series: [{
+      name: '购买占比',
+      type: 'pie',
+      radius: ['45%', '70%'],
+      center: ['40%', '50%'],
+      label: {
+        show: true,
+        position: 'inside',
+        formatter: '{d}%',
+        color: '#fff',
+        fontSize: 13
+      },
+      labelLine: {show: false},
+      data: pieData,
+      color: colorList,
+      borderWidth: 2,
+      borderColor: '#0a1230'
+    }]
+  });
+});
+
+// 获取时段分析数据
+fetch('/api/dashboard/time')
+.then(res => res.json())
+.then(result => {
+  const timeData = result.data;
+  chart7.setOption({
+    grid: {left: '10%', right: '10%', bottom: '20%', top: '15%'},
+    xAxis: {
+      type: 'category', data: timeData.map(i=>i.order_time_slot),
+      axisLabel:{color:'#fff', fontSize:13}, axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    yAxis: {
+      type: 'value', name:'订单量', nameTextStyle:{color:'#fff'},
+      axisLabel:{color:'#fff'}, axisLine:{lineStyle:{color:'#1fb2ff'}}
+    },
+    series: [{
+      name:'订单量', type:'bar', data: timeData.map(i=>i.order_count),
+      itemStyle:{
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          {offset: 0, color: '#1fb2ff'},
+          {offset: 1, color: '#0f1941'}
+        ]),
+        borderRadius: [4, 4, 0, 0]
+      },
+      barWidth: '60%'
+    }],
+    tooltip: {trigger: 'axis', backgroundColor: 'rgba(10, 18, 48, 0.9)'}
+  });
+});
+
+window.onresize = function(){
+  [chart1,chart2,chart3,chart4,chart5,chart6,chart7].forEach(c => c.resize());
+}
+</script>
+</body>
+</html>

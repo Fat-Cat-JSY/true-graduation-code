@@ -1,0 +1,5 @@
+user_gender,is_plus,order_count,return_rate,avg_user_age
+女,是,2554,0.5051,47.0
+女,否,2539,0.5104,47.0
+男,是,2510,0.508,46.7
+男,否,2397,0.4873,46.9
