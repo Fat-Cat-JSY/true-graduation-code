@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>商品原价预测</title>
+  <style>
+    * {margin: 0; padding: 0; box-sizing: border-box;}
+    body {width: 100vw; min-height: 100vh; background: #0f1941; color: #fff; font-family: "Microsoft Yahei", sans-serif; padding: 20px;}
+    .container {max-width: 900px; margin: 0 auto; border: 1px solid #1fb2ff; border-radius: 8px; padding: 30px; background: rgba(31, 178, 255, 0.05);}
+    .header {
+      width: 100%; height: 50px; line-height: 50px; text-align: center;
+      font-size: 24px; font-weight: bold; position: relative; margin-bottom: 30px;
+      border-bottom: 1px solid #1fb2ff;
+    }
+    .back-btn {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+      padding: 8px 20px; background: linear-gradient(90deg, #1fb2ff, #36cfc9);
+      border: none; border-radius: 4px; color: #fff; font-size: 16px; cursor: pointer;
+    }
+    .section-title {
+      font-size: 18px; color: #36cfc9; border-left: 3px solid #36cfc9;
+      padding-left: 10px; margin: 25px 0 15px 0;
+    }
+    .form-row {display: flex; flex-wrap: wrap; gap: 15px 30px; margin-bottom: 10px;}
+    .form-item {margin-bottom: 15px; font-size: 16px; flex: 1; min-width: 280px;}
+    label {display: inline-block; width: 120px; text-align: right; margin-right: 8px; font-size: 15px;}
+    select, input {
+      width: 220px; height: 36px; border: 1px solid #1fb2ff; border-radius: 4px;
+      background: #0f1941; color: #fff; padding: 0 10px; font-size: 14px;
+    }
+    select option {background: #0f1941; color: #fff;}
+    .predict-btn {
+      display: block; width: 200px; height: 50px; margin: 30px auto;
+      background: linear-gradient(90deg, #1fb2ff, #36cfc9);
+      border: none; border-radius: 4px; color: #fff; font-size: 18px; cursor: pointer;
+    }
+    .predict-btn:hover {opacity: 0.85;}
+    .result-box {
+      margin-top: 20px; padding: 20px; border: 1px dashed #1fb2ff;
+      border-radius: 4px; text-align: center; font-size: 18px; line-height: 1.6;
+    }
+    .price-value {
+      color: #FFD700; font-weight: bold; font-size: 36px;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    }
+    .price-unit {color: #36cfc9; font-size: 18px; margin-left: 5px;}
+    .info-text {color: #888; font-size: 14px; margin-top: 8px;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      💰 商品原价智能预测
+      <button class="back-btn" onclick="window.location.href='/'">返回数据分析大屏 →</button>
+    </div>
+
+    <!-- ===== 商品属性 ===== -->
+    <div class="section-title">📦 商品属性</div>
+    <div class="form-row">
+      <div class="form-item">
+        <label>商品品牌：</label>
+        <select id="brand">
+          <option value="李宁休闲">李宁休闲</option>
+          <option value="阿迪达斯">阿迪达斯</option>
+          <option value="耐克潮流">耐克潮流</option>
+          <option value="斯凯奇潮">斯凯奇潮</option>
+          <option value="安踏运动">安踏运动</option>
+          <option value="特步男鞋">特步男鞋</option>
+          <option value="鸿星尔克">鸿星尔克</option>
+          <option value="回力经典">回力经典</option>
+          <option value="京东京造">京东京造</option>
+          <option value="其他品牌">其他品牌</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>鞋面材质：</label>
+        <select id="upper_material">
+          <option value="飞织面料">飞织面料</option>
+          <option value="网布透气">网布透气</option>
+          <option value="合成革鞋">合成革鞋</option>
+          <option value="超纤皮鞋">超纤皮鞋</option>
+          <option value="真皮柔软">真皮柔软</option>
+          <option value="高端飞织">高端飞织</option>
+          <option value="混合材质">混合材质</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-item">
+        <label>鞋底材质：</label>
+        <select id="sole_material">
+          <option value="TPR鞋底">TPR鞋底</option>
+          <option value="EVA轻底">EVA轻底</option>
+          <option value="MD发泡底">MD发泡底</option>
+          <option value="PU中底">PU中底</option>
+          <option value="橡胶大底">橡胶大底</option>
+          <option value="混合鞋底">混合鞋底</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>闭合方式：</label>
+        <select id="close_style">
+          <option value="系带设计">系带设计</option>
+          <option value="套脚款式">套脚款式</option>
+          <option value="魔术贴鞋">魔术贴鞋</option>
+          <option value="松紧带鞋">松紧带鞋</option>
+          <option value="拉链鞋款">拉链鞋款</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-item">
+        <label>商品风格：</label>
+        <select id="style">
+          <option value="简约百搭">简约百搭</option>
+          <option value="日常休闲">日常休闲</option>
+          <option value="运动休闲">运动休闲</option>
+          <option value="复古潮鞋">复古潮鞋</option>
+          <option value="潮流高街">潮流高街</option>
+          <option value="工装硬朗">工装硬朗</option>
+          <option value="户外机能">户外机能</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>适用季节：</label>
+        <select id="season">
+          <option value="四季通用">四季通用</option>
+          <option value="春季新款">春季新款</option>
+          <option value="夏季透气">夏季透气</option>
+          <option value="秋季百搭">秋季百搭</option>
+          <option value="冬季保暖">冬季保暖</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ===== 商品评价 ===== -->
+    <div class="section-title">📊 商品评价</div>
+    <div class="form-row">
+      <div class="form-item">
+        <label>评论数：</label>
+        <input type="number" id="comment_count" placeholder="请输入评论数" value="1000">
+      </div>
+      <div class="form-item">
+        <label>好评率(%)：</label>
+        <input type="number" step="0.1" id="good_rate" placeholder="0-100" value="93">
+      </div>
+    </div>
+
+    <button class="predict-btn" onclick="predict()">开始预测</button>
+
+    <div class="result-box">
+      <div>预测商品原价</div>
+      <div style="margin-top:10px;">
+        <span class="price-value" id="predicted_price">--</span>
+        <span class="price-unit">元</span>
+      </div>
+      <div class="info-text" id="info_text"></div>
+    </div>
+  </div>
+
+<script>
+function predict(){
+  const reqData = {
+    brand: document.getElementById('brand').value,
+    upper_material: document.getElementById('upper_material').value,
+    sole_material: document.getElementById('sole_material').value,
+    close_style: document.getElementById('close_style').value,
+    style: document.getElementById('style').value,
+    season: document.getElementById('season').value,
+    comment_count: document.getElementById('comment_count').value,
+    good_rate: document.getElementById('good_rate').value
+  };
+
+  fetch('/api/price_predict', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(reqData)
+  })
+  .then(res => res.json())
+  .then(result => {
+    if(result.code === 200){
+      document.getElementById('predicted_price').innerText = result.predicted_price.toFixed(2);
+      document.getElementById('info_text').innerText = '基于商品属性与市场表现特征预测';
+    }else{
+      alert('预测失败：' + result.msg);
+    }
+  })
+  .catch(e => {
+    alert('请求错误：' + e.message);
+  });
+}
+</script>
+</body>
+</html>
