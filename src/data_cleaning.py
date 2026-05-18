@@ -14,7 +14,7 @@ MYSQL_TABLE_NAME = "clean_shoe_train_data"
 STORAGE_MODE = 2   # 正式运行设为2
 
 # ================= 数据读取与预处理 =================
-df = pd.read_csv(RAW_DATA_PATH, encoding="utf-8")
+df = pd.read_csv(RAW_DATA_PATH, encoding="utf-8-sig")
 
 # 重命名列名，统一字段格式
 df.rename(columns={
@@ -45,11 +45,20 @@ df.rename(columns={
 print(f"原始数据共 {len(df)} 行，开始预处理...")
 
 # 缺失值填充：分类特征填充未知，数值特征填充均值
+missing_report = df.isnull().sum()
+missing_report = missing_report[missing_report > 0]
+if len(missing_report) > 0:
+    print("缺失值报告：")
+    for col, cnt in missing_report.items():
+        print(f"  {col}: {cnt}条缺失 ({cnt / len(df) * 100:.2f}%)")
+else:
+    print("无缺失值")
+
 for col in df.columns:
     if df[col].dtype == object:
         df[col] = df[col].fillna("未知")
     else:
-        df[col] = df[col].fillna(df[col].mean())
+        df[col] = df[col].fillna(df[col].median())
 
 # 处理是否会员is_plus
 # 原始是"是/否"中文，转成0/1
@@ -71,9 +80,17 @@ def get_time_slot(hour):
         return "晚上(19-23点)"
 df["order_time_slot"] = df["order_hour"].apply(get_time_slot)
 
-# 异常值过滤：去除价格、销量异常的脏数据
-df = df[(df["original_price"] > 0) & (df["month_sale"] >= 0)].reset_index(drop=True)
-
+# 异常值过滤：去除年龄、价格、销量异常的脏数据
+before_count = len(df)
+df = df[
+    (df["original_price"] > 0) &
+    (df["month_sale"] >= 0) &
+    (df["discount_rate"] >= 0) & (df["discount_rate"] <= 100) &
+    (df["good_rate"] >= 0) & (df["good_rate"] <= 100) &
+    (df["price"] <= df["original_price"]) &  # 折扣价不应高于原价
+    (df["user_age"] >= 18) & (df["user_age"] <= 80)  # 合理年龄范围
+].reset_index(drop=True)
+print(f"异常值过滤：移除 {before_count - len(df)} 条，剩余 {len(df)} 条")
 print(f"预处理完成，剩余 {len(df)} 行干净数据")
 
 # 存储预处理结果

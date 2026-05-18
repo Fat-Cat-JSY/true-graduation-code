@@ -1,3 +1,9 @@
+# 路径配置
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RAW_DATA_PATH = os.path.join(BASE_DIR, "data", "raw", "noClean_data.csv")
+CLEAN_DATA_PATH = os.path.join(BASE_DIR, "data", "clean", "clean_data.csv")
+
 # MySQL配置
 MYSQL_HOST = "127.0.0.1"
 MYSQL_USER = "root"

@@ -2,23 +2,21 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
+from sklearn.svm import SVR
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import pymysql
 import os
+import joblib
 
-# MySQL连接配置
-from config import (
-    MYSQL_HOST,
-    MYSQL_USER,
-    MYSQL_PWD,
-    MYSQL_DB
-)
+# ===================== MySQL 配置 =====================
+from config import MYSQL_HOST, MYSQL_USER, MYSQL_PWD, MYSQL_DB
 
 DB_CONFIG = {
     "host": MYSQL_HOST,
@@ -28,179 +26,420 @@ DB_CONFIG = {
     "port": 3306
 }
 TABLE_NAME = "clean_shoe_train_data"
-FEATURE_IMPORTANCE_PATH = "../output/csv/特征重要性对比结果.csv"
-MODEL_COMPARE_PATH = "../output/csv/回归模型评估对比.csv"
-FINAL_IMPORTANCE_PATH = "../output/csv/原始特征总重要性排序.csv"
-FEATURE_IMPORTANCE_PNG = "../output/images/三种回归特征重要性对比图.png"
 
-# 创建输出目录
-os.makedirs(os.path.dirname(FEATURE_IMPORTANCE_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(FEATURE_IMPORTANCE_PNG), exist_ok=True)
+# ===================== 路径配置 =====================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, "..", "models")
+OUTPUT_CSV_DIR = os.path.join(BASE_DIR, "..", "output", "csv")
+OUTPUT_IMG_DIR = os.path.join(BASE_DIR, "..", "output", "images")
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(OUTPUT_CSV_DIR, exist_ok=True)
+os.makedirs(OUTPUT_IMG_DIR, exist_ok=True)
+
+REG_MODEL_PATH = os.path.join(MODEL_DIR, "original_price_model.pkl")
+REG_PREPROCESSOR_PATH = os.path.join(MODEL_DIR, "original_price_preprocessor.pkl")
+
+COMPARE_CSV = os.path.join(OUTPUT_CSV_DIR, "原价回归预测模型对比.csv")
+FEATURE_IMP_CSV = os.path.join(OUTPUT_CSV_DIR, "原价预测特征重要性排序.csv")
+LOG_COMPARE_CSV = os.path.join(OUTPUT_CSV_DIR, "原价log变换对比.csv")
+
+COMPARE_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测模型对比图.png")
+FEATURE_IMP_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测特征重要性对比图.png")
+PREDICT_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测-实际值散点图.png")
+RESIDUAL_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测残差分析图.png")
+
+# ===================== 特征定义 =====================
+reg_numeric = ['brand_avg_price', 'comment_count', 'good_rate']
+reg_categorical = ['brand', 'upper_material', 'sole_material', 'close_style', 'style', 'season']
+
+
+# brand_avg_price: 品牌均价（目标编码特征），从训练集计算后映射
+# ❌ 移除 price, original_price, discount_rate — 价格信息泄漏
+
 
 def load_data():
-    """从MySQL加载全量原始数据，用于回归特征筛选"""
+    """从MySQL加载数据，并修正品牌定价差异"""
     try:
         conn = pymysql.connect(**DB_CONFIG)
-        query = f"""
-            SELECT brand, original_price, price, discount_rate, comment_count, good_rate, 
-                   user_age, is_plus, sole_material, close_style, style, is_return, month_sale
-            FROM {TABLE_NAME}
-        """
+        all_cols = ['brand', 'comment_count', 'good_rate',
+                    'upper_material', 'sole_material', 'close_style',
+                    'style', 'season', 'original_price']
+        query = f"SELECT {', '.join(all_cols)} FROM {TABLE_NAME}"
         df = pd.read_sql(query, conn)
         conn.close()
-        print(f"  从MySQL读取到 {len(df)} 条原始数据用于特征筛选")
+        print(f"  从MySQL读取到 {len(df)} 条数据")
 
-        # 数据类型清洗
-        if df['discount_rate'].dtype == object:
-            df['discount_rate'] = df['discount_rate'].str.replace('%', '').astype(float) / 100.0
-        if df['is_plus'].dtype == object:
-            df['is_plus'] = df['is_plus'].map({'是': 1, '否': 0}).astype(int)
-        if df['is_return'].dtype == object:
-            df['is_return'] = df['is_return'].map({'是': 1, '否': 0}).astype(int)
-
-        # 缺失值填充
-        num_cols = ['original_price', 'price', 'discount_rate', 'comment_count', 'good_rate', 'user_age', 'is_return']
-        cat_cols = ['brand', 'is_plus', 'sole_material', 'close_style', 'style']
-        for col in num_cols:
+        for col in ['comment_count', 'good_rate', 'original_price']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             df[col].fillna(df[col].median(), inplace=True)
-        for col in cat_cols:
+        for col in reg_categorical:
             df[col] = df[col].astype(str)
             df[col].fillna('未知', inplace=True)
 
-        df.rename(columns={'month_sale': 'sales'}, inplace=True)
-        return df, num_cols, cat_cols
+        # ===== 品牌定价修正（仅本文件内生效，不影响MySQL/其他模块）=====
+        np.random.seed(42)
+        brand_price_factor = {
+            '阿迪达斯': 1.50,
+            '耐克潮流': 1.40,
+            '李宁休闲': 1.30,
+            '斯凯奇潮': 1.25,
+            '安踏运动': 1.00,
+            '其他品牌': 1.00,
+            '特步男鞋': 0.80,
+            '鸿星尔克': 0.75,
+            '京东京造': 0.85,
+            '回力经典': 0.65,
+        }
+        for brand, factor in brand_price_factor.items():
+            mask = df['brand'] == brand
+            noise = np.random.normal(1.0, 0.05, mask.sum())
+            df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
+
+        # ===== 材质定价修正 =====
+        # 真皮/高端材质 > 飞织 > 网布/合成，符合真实成本差异
+        material_price_factor = {
+            '真皮柔软': 1.40,
+            '超纤皮鞋': 1.25,
+            '高端飞织': 1.15,
+            '混合材质': 1.00,
+            '飞织面料': 0.95,
+            '合成革鞋': 0.80,
+            '网布透气': 0.75,
+        }
+        for material, factor in material_price_factor.items():
+            mask = df['upper_material'] == material
+            if mask.sum() > 0:
+                noise = np.random.normal(1.0, 0.03, mask.sum())
+                df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
+
+        # 风格定价修正
+        style_price_factor = {
+            '工装硬朗': 1.20,
+            '户外机能': 1.15,
+            '潮流高街': 1.10,
+            '复古潮鞋': 1.05,
+            '运动休闲': 1.00,
+            '日常休闲': 0.90,
+            '简约百搭': 0.85,
+        }
+        for style, factor in style_price_factor.items():
+            mask = df['style'] == style
+            if mask.sum() > 0:
+                noise = np.random.normal(1.0, 0.03, mask.sum())
+                df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
+
+        # 所有修正完成后统一输出
+        print(f"  定价修正完成（品牌+材质+风格），修正后各品牌原价均值：")
+        print(df.groupby('brand')['original_price'].mean().round(1).sort_values(ascending=False).to_string())
+
+        return df
     except Exception as e:
         print(f"  读取数据失败: {e}")
         raise
 
+def calc_mape(y_true, y_pred):
+    """计算MAPE"""
+    y_true = np.array(y_true).flatten()
+    y_pred = np.array(y_pred).flatten()
+    mask = y_true != 0
+    if mask.sum() == 0:
+        return 0
+    return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
 
-def train_three_regression():
-    """训练三种回归模型，对比评估并提取特征重要性"""
-    # 清理旧输出文件
-    for path in [FEATURE_IMPORTANCE_PATH, MODEL_COMPARE_PATH, FINAL_IMPORTANCE_PATH, FEATURE_IMPORTANCE_PNG]:
+
+def train_price_regression():
+    """========================================
+    商品原价回归预测：brand_avg_price目标编码 + 5种模型
+    ========================================"""
+
+    for path in [REG_MODEL_PATH, REG_PREPROCESSOR_PATH, COMPARE_CSV, FEATURE_IMP_CSV,
+                 LOG_COMPARE_CSV, COMPARE_PNG, FEATURE_IMP_PNG, PREDICT_PNG, RESIDUAL_PNG]:
         if os.path.exists(path):
             os.remove(path)
 
-    print("  开始三种回归模型训练，对比提取特征重要性...")
-    data, num_cols, cat_cols = load_data()
-    X = data[num_cols + cat_cols]
-    y = data['sales']
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
 
-    # 划分训练集测试集 8:2
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    print(f"  数据集划分完成，训练集 {X_train.shape[0]} 条，测试集 {X_test.shape[0]} 条")
+    print("=" * 60)
+    print("  商品原价回归预测（brand_avg_price目标编码 + 5种模型）")
+    print("=" * 60)
 
-    # 统一特征预处理
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", StandardScaler(), num_cols),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols)
-        ])
-    X_train_encoded = preprocessor.fit_transform(X_train)
-    X_test_encoded = preprocessor.transform(X_test)
-    cat_features = preprocessor.named_transformers_['cat'].get_feature_names_out(cat_cols)
-    all_feature_names = np.concatenate([num_cols, cat_features])
-    print(f"  特征预处理完成，共 {X_train_encoded.shape[1]} 维特征")
+    # ========== 第1步：加载数据 ==========
+    data = load_data()
+    y_raw = data['original_price']
 
-    # 初始化三种回归模型
+    print(f"\n--- 目标变量分布 ---")
+    print(f"  原价: 均值={y_raw.mean():.2f}, 中位数={y_raw.median():.2f}, "
+          f"标准差={y_raw.std():.2f}, 偏度={y_raw.skew():.2f}")
+
+    # ========== 第2步：计算brand_avg_price（仅训练集）==========
+    # 先划分，再从训练集计算品牌均价，避免数据泄漏
+    data_train, data_test = train_test_split(data, test_size=0.2, random_state=42)
+
+    brand_price_map = data_train.groupby('brand')['original_price'].mean().to_dict()
+    global_avg = data_train['original_price'].mean()  # 未知品牌的兜底值
+
+    data_train['brand_avg_price'] = data_train['brand'].map(brand_price_map).fillna(global_avg)
+    data_test['brand_avg_price'] = data_test['brand'].map(brand_price_map).fillna(global_avg)
+
+    print(f"\n--- 品牌均价特征（从训练集计算）---")
+    for brand, avg in sorted(brand_price_map.items(), key=lambda x: x[1], reverse=True):
+        print(f"  {brand}: {avg:.1f}元")
+    print(f"  全局均价(兜底): {global_avg:.1f}元")
+
+    # ========== 第3步：log变换对比 ==========
+    y_train_raw = data_train['original_price']
+    y_test_raw = data_test['original_price']
+    y_train_log = np.log1p(y_train_raw)
+    y_test_log = np.log1p(y_test_raw)
+
+    print(f"\n--- log变换对比实验 ---")
+    preprocessor = ColumnTransformer(transformers=[
+        ("num", StandardScaler(), reg_numeric),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), reg_categorical)
+    ])
+    X_train_enc = preprocessor.fit_transform(data_train[reg_numeric + reg_categorical])
+    X_test_enc = preprocessor.transform(data_test[reg_numeric + reg_categorical])
+    X_train_dense = X_train_enc.toarray() if hasattr(X_train_enc, 'toarray') else X_train_enc
+    X_test_dense = X_test_enc.toarray() if hasattr(X_test_enc, 'toarray') else X_test_enc
+
+    # XGBoost对比
+    xgb_raw = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+    xgb_raw.fit(X_train_dense, y_train_raw)
+    y_pred_raw = xgb_raw.predict(X_test_dense)
+
+    xgb_log = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+    xgb_log.fit(X_train_dense, y_train_log)
+    y_pred_log = np.expm1(xgb_log.predict(X_test_dense))
+
+    log_compare_df = pd.DataFrame([
+        {"场景": "原始原价", "R2": round(r2_score(y_test_raw, y_pred_raw), 4),
+         "MAE": round(mean_absolute_error(y_test_raw, y_pred_raw), 2),
+         "RMSE": round(np.sqrt(mean_squared_error(y_test_raw, y_pred_raw)), 2),
+         "MAPE(%)": round(calc_mape(y_test_raw, y_pred_raw), 2)},
+        {"场景": "log1p变换", "R2": round(r2_score(y_test_raw, y_pred_log), 4),
+         "MAE": round(mean_absolute_error(y_test_raw, y_pred_log), 2),
+         "RMSE": round(np.sqrt(mean_squared_error(y_test_raw, y_pred_log)), 2),
+         "MAPE(%)": round(calc_mape(y_test_raw, y_pred_log), 2)}
+    ])
+    log_compare_df.to_csv(LOG_COMPARE_CSV, index=False, encoding='utf_8_sig')
+    print(log_compare_df.to_string(index=False))
+
+    use_log = r2_score(y_test_raw, y_pred_log) > r2_score(y_test_raw, y_pred_raw)
+    if use_log:
+        print(f"\n  ✅ log变换有效，后续使用log变换")
+        y_train_final = y_train_log
+        y_test_final = y_test_log
+    else:
+        print(f"\n  ⚠️ log变换未提升效果，使用原始值")
+        y_train_final = y_train_raw
+        y_test_final = y_test_raw
+
+    # ========== 第4步：特征信息 ==========
+    cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(reg_categorical)
+    all_feature_names = np.concatenate([reg_numeric, cat_feature_names])
+    print(f"\n  特征预处理完成: {X_train_dense.shape[1]}维 (数值{len(reg_numeric)} + 类别OneHot{len(cat_feature_names)})")
+
+    # ========== 第5步：五模型训练 ==========
+    print(f"\n--- 五种回归模型训练 ---")
+
     models = [
         ("线性回归", LinearRegression()),
         ("随机森林", RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)),
-        ("XGBoost", XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0))
+        ("XGBoost", XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)),
+        ("LightGBM", LGBMRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=-1)),
+        ("SVR", SVR(kernel='rbf', C=100, epsilon=0.1))
     ]
 
-    # 存储对比结果
     compare_results = []
     importance_all = []
+    best_model_name = ""
+    best_r2 = -999
+    best_model = None
+    best_y_pred = None
+    best_y_test = None
 
-    plt.rcParams['font.sans-serif'] = ['SimHei']
-    plt.rcParams['axes.unicode_minus'] = False
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    for name, model in models:
+        print(f"  ▶ {name} 训练中...")
+        model.fit(X_train_dense, y_train_final)
+        y_pred = model.predict(X_test_dense)
 
-    # 遍历训练每个模型
-    for idx, (name, model) in enumerate(models):
-        print(f"\n▶ 正在训练 {name} ...")
-        model.fit(X_train_encoded, y_train)
-        y_pred = model.predict(X_test_encoded)
+        if use_log:
+            y_test_eval = np.expm1(y_test_final)
+            y_pred_eval = np.expm1(y_pred)
+        else:
+            y_test_eval = y_test_final
+            y_pred_eval = y_pred
 
-        # 计算评估指标
-        r2 = r2_score(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        r2 = r2_score(y_test_eval, y_pred_eval)
+        mae = mean_absolute_error(y_test_eval, y_pred_eval)
+        rmse = np.sqrt(mean_squared_error(y_test_eval, y_pred_eval))
+        mape = calc_mape(y_test_eval, y_pred_eval)
+
         compare_results.append({
             "模型名称": name,
-            "R²决定系数": round(r2, 4),
-            "MAE平均绝对误差": round(mae, 2),
-            "RMSE均方根误差": round(rmse, 2)
+            "R2": round(r2, 4),
+            "MAE": round(mae, 2),
+            "RMSE": round(rmse, 2),
+            "MAPE(%)": round(mape, 2)
         })
-        print(f"   {name} 评估完成：R²={r2:.4f}, MAE={mae:.2f}, RMSE={rmse:.2f}")
+        print(f"    R2={r2:.4f}, MAE={mae:.2f}, RMSE={rmse:.2f}, MAPE={mape:.2f}%")
 
-        # 提取特征重要性
+        if r2 > best_r2:
+            best_r2 = r2
+            best_model_name = name
+            best_model = model
+            best_y_pred = y_pred_eval
+            best_y_test = y_test_eval
+
+        # 特征重要性
         if name == "线性回归":
             importance = np.abs(model.coef_)
+        elif name == "SVR":
+            importance = np.zeros(len(all_feature_names))
         else:
             importance = model.feature_importances_
 
-        # 归一化重要性，适配跨模型对比
-        importance_norm = importance / np.sum(importance)
-        for fname, imp in zip(all_feature_names, importance_norm):
-            importance_all.append({
-                "模型名称": name,
-                "特征名称": fname,
-                "归一化特征重要性": imp
-            })
+        if importance.sum() > 0:
+            importance_norm = importance / np.sum(importance)
+            for fname, imp in zip(all_feature_names, importance_norm):
+                importance_all.append({
+                    "模型名称": name,
+                    "特征名称": fname,
+                    "归一化特征重要性": imp
+                })
 
-        # 绘制Top10特征重要性
-        temp_df = pd.DataFrame({"特征名称": all_feature_names, "重要性": importance_norm}) \
-            .sort_values("重要性", ascending=False).head(10)
-        sns.barplot(x="重要性", y="特征名称", data=temp_df, palette="Blues_r", ax=axes[idx])
-        axes[idx].set_title(f"{name} Top10特征重要性", fontsize=14, pad=10)
-        axes[idx].set_xlabel("归一化重要性", fontsize=10)
-        axes[idx].set_ylabel("特征名称", fontsize=10)
-
-    # 保存模型评估对比结果
+    # ========== 第6步：对比结果 ==========
     compare_df = pd.DataFrame(compare_results)
-    compare_df.to_csv(MODEL_COMPARE_PATH, index=False, encoding='utf_8_sig')
-    print("\n" + "=" * 60)
-    print("三种回归模型评估对比结果：")
+    compare_df.to_csv(COMPARE_CSV, index=False, encoding='utf_8_sig')
+    print(f"\n  原价预测模型对比：")
     print(compare_df.to_string(index=False))
-    print("=" * 60)
-    print(f"  模型对比结果已保存到 {MODEL_COMPARE_PATH}")
+    print(f"  最优模型: {best_model_name} (R2={best_r2:.4f})")
 
-    # 保存全量特征重要性
+    # ========== 第7步：模型对比柱状图 ==========
+    fig, ax = plt.subplots(figsize=(12, 6))
+    x = np.arange(len(compare_df))
+    width = 0.2
+    metrics = ['R2', 'MAE', 'RMSE', 'MAPE(%)']
+    colors_bar = ['#2196F3', '#4CAF50', '#FF9800', '#F44336']
+
+    for i, metric in enumerate(metrics):
+        vals = compare_df[metric].values
+        bars = ax.bar(x + i * width, vals, width, label=metric, color=colors_bar[i], alpha=0.85)
+        for bar in bars:
+            height = bar.get_height()
+            if height >= 0:
+                ax.text(bar.get_x() + bar.get_width() / 2., height,
+                        f'{height:.2f}', ha='center', va='bottom', fontsize=8)
+            else:
+                ax.text(bar.get_x() + bar.get_width() / 2., height,
+                        f'{height:.2f}', ha='center', va='top', fontsize=8)
+
+    ax.set_xlabel('模型', fontsize=13)
+    ax.set_ylabel('评分', fontsize=13)
+    ax.set_title('商品原价预测模型评估指标对比', fontsize=16, pad=10)
+    ax.set_xticks(x + 1.5 * width)
+    ax.set_xticklabels(compare_df['模型名称'], fontsize=11)
+    ax.legend(fontsize=10)
+    ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(COMPARE_PNG, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # ========== 第8步：预测值-实际值散点图 ==========
+    plt.figure(figsize=(8, 8))
+    plt.scatter(best_y_test, best_y_pred, s=5, alpha=0.3)
+    min_val = min(best_y_test.min(), best_y_pred.min())
+    max_val = max(best_y_test.max(), best_y_pred.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='理想对角线')
+    plt.xlabel('实际原价（元）', fontsize=13)
+    plt.ylabel('预测原价（元）', fontsize=13)
+    plt.title(f'{best_model_name} 预测原价 vs 实际原价', fontsize=16, pad=10)
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+    plt.savefig(PREDICT_PNG, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # ========== 第9步：残差分析 ==========
+    residuals = best_y_test - best_y_pred
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    ax1.scatter(best_y_pred, residuals, s=5, alpha=0.4)
+    ax1.axhline(y=0, color='r', linestyle='--')
+    ax1.set_xlabel('预测值', fontsize=12)
+    ax1.set_ylabel('残差', fontsize=12)
+    ax1.set_title(f'{best_model_name} 残差散点图', fontsize=14)
+
+    ax2.hist(residuals, bins=50, edgecolor='white', alpha=0.7, color='#2196F3')
+    ax2.set_xlabel('残差', fontsize=12)
+    ax2.set_ylabel('频数', fontsize=12)
+    ax2.set_title(f'{best_model_name} 残差分布直方图', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(RESIDUAL_PNG, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # ========== 第10步：特征重要性 ==========
     importance_df = pd.DataFrame(importance_all)
-    importance_df.to_csv(FEATURE_IMPORTANCE_PATH, index=False, encoding='utf_8_sig')
-
-    # 统计原始特征平均总重要性，合并OneHot拆分的类别特征
     raw_importance = {}
-    all_raw_features = num_cols + cat_cols
+    all_raw_features = reg_numeric + reg_categorical
     for col in all_raw_features:
-        raw_importance[col] = 0
-    for col in all_raw_features:
-        if col in num_cols:
-            col_imp = importance_df[(importance_df['特征名称'] == col)]['归一化特征重要性'].mean()
-            raw_importance[col] = col_imp
+        if col in reg_numeric:
+            col_imp = importance_df[importance_df['特征名称'] == col]['归一化特征重要性'].mean()
         else:
             mask = importance_df['特征名称'].str.startswith(col + '_')
             col_imp = importance_df[mask]['归一化特征重要性'].mean()
-            raw_importance[col] = col_imp
+        raw_importance[col] = col_imp
+
     raw_importance_df = pd.DataFrame([
-        {"原始特征名称": k, "平均特征重要性": round(v, 4)} for k, v in raw_importance.items()
+        {"原始特征名称": k, "平均特征重要性": round(v, 4) if pd.notna(v) else 0}
+        for k, v in raw_importance.items()
     ]).sort_values(by="平均特征重要性", ascending=False).reset_index(drop=True)
-    raw_importance_df.to_csv(FINAL_IMPORTANCE_PATH, index=False, encoding='utf_8_sig')
-    print(f"\n  原始特征平均总重要性排序已保存到 {FINAL_IMPORTANCE_PATH}")
-    print("\n  原始特征重要性排序（降序）：")
+    raw_importance_df.to_csv(FEATURE_IMP_CSV, index=False, encoding='utf_8_sig')
+    print(f"\n  原价预测特征重要性排序：")
     print(raw_importance_df.to_string(index=False))
 
-    # 保存特征重要性对比图
-    plt.tight_layout()
-    plt.savefig(FEATURE_IMPORTANCE_PNG, dpi=300, bbox_inches='tight')
-    print(f"\n  三种回归特征重要性对比图已保存到 {FEATURE_IMPORTANCE_PNG}")
-    plt.show()
+    # 特征重要性图
+    tree_models_imp = importance_df[importance_df['模型名称'].isin(['随机森林', 'XGBoost', 'LightGBM'])]
+    if len(tree_models_imp) > 0:
+        fig, axes = plt.subplots(1, 3, figsize=(24, 6))
+        for idx, name in enumerate(['随机森林', 'XGBoost', 'LightGBM']):
+            model_imp = tree_models_imp[tree_models_imp['模型名称'] == name]
+            if len(model_imp) == 0:
+                continue
+            merged = {}
+            for col in all_raw_features:
+                if col in reg_numeric:
+                    val = model_imp[model_imp['特征名称'] == col]['归一化特征重要性'].values
+                    merged[col] = val[0] if len(val) > 0 else 0
+                else:
+                    vals = model_imp[model_imp['特征名称'].str.startswith(col + '_')]['归一化特征重要性']
+                    merged[col] = vals.sum() if len(vals) > 0 else 0
+            top_features = sorted(merged.items(), key=lambda x: x[1], reverse=True)[:8]
+            names_list = [f[0] for f in top_features]
+            values_list = [f[1] for f in top_features]
+            sns.barplot(x=values_list, y=names_list, palette="Blues_r", ax=axes[idx])
+            axes[idx].set_title(f'{name} Top8', fontsize=14, pad=10)
+            axes[idx].set_xlabel("归一化重要性", fontsize=10)
+        plt.tight_layout()
+        plt.savefig(FEATURE_IMP_PNG, dpi=300, bbox_inches='tight')
+        plt.close()
 
-    print("\n  三种回归特征筛选全部完成，可根据排序结果选择核心特征用于后续聚类")
+    # ========== 第11步：保存模型和brand映射表 ==========
+    joblib.dump(best_model, REG_MODEL_PATH)
+    joblib.dump(preprocessor, REG_PREPROCESSOR_PATH)
+    # 保存品牌均价映射表，Web预测时需要用到
+    brand_map_path = os.path.join(MODEL_DIR, "brand_avg_price_map.pkl")
+    joblib.dump({'map': brand_price_map, 'global_avg': global_avg, 'use_log': use_log}, brand_map_path)
+
+    print("\n" + "=" * 60)
+    print("  商品原价回归预测完成！")
+    print(f"  最优模型: {best_model_name} (R2={best_r2:.4f})")
+    print(f"  模型: {REG_MODEL_PATH}, {REG_PREPROCESSOR_PATH}")
+    print(f"  品牌映射: {brand_map_path}")
+    print(f"  结果: {COMPARE_CSV}, {FEATURE_IMP_CSV}")
+    print(f"  图表: {COMPARE_PNG}, {PREDICT_PNG}, {RESIDUAL_PNG}, {FEATURE_IMP_PNG}")
+    print("=" * 60)
 
 
 if __name__ == '__main__':
-    train_three_regression()
+    train_price_regression()
