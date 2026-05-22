@@ -239,17 +239,7 @@ def train_product_cluster():
     k_range = range(2, 9)
     plot_elbow_and_silhouette(X_pca, k_range)
 
-    # 自动选择轮廓系数最高的K
-    # sil_scores = []
-    # for k in k_range:
-    #     km = KMeans(n_clusters=k, random_state=42, n_init=10)
-    #     labels = km.fit_predict(X_pca)
-    #     sil_scores.append(silhouette_score(X_pca, labels))
-    # best_k = list(k_range)[np.argmax(sil_scores)]
-    # print(f"  轮廓系数法推荐最优K={best_k} (轮廓系数={max(sil_scores):.4f})")
-    # print(f"  ⚠️ 请结合肘部法则图人工确认，如需修改请在下方手动设置best_k")
-
-    # 如需手动覆盖，取消下面这行的注释：
+    # 手动覆盖：
     best_k = 4
 
     # ========== 第5步：多模型训练与评估 ==========
@@ -276,22 +266,22 @@ def train_product_cluster():
     gmm_metrics = evaluate_clustering(X_pca, gmm_labels)
     print(f"    GMM → CH={gmm_metrics['CH指数']}, 轮廓={gmm_metrics['轮廓系数']}, DB={gmm_metrics['DB指数']}")
 
-    # 5.4 DBSCAN
-    print("  ▶ DBSCAN 训练中...")
-    dbscan = DBSCAN(eps=2.0, min_samples=15)
-    db_labels = dbscan.fit_predict(X_pca)
-    db_metrics = evaluate_clustering(X_pca, db_labels)
-    n_noise = np.sum(db_labels == -1)
-    n_db_clusters = db_metrics['有效簇数']
-    print(f"    DBSCAN → 识别{n_db_clusters}个簇, 噪声点{n_noise}个, "
-          f"CH={db_metrics['CH指数']}, 轮廓={db_metrics['轮廓系数']}, DB={db_metrics['DB指数']}")
+    # # 5.4 DBSCAN
+    # print("  ▶ DBSCAN 训练中...")
+    # dbscan = DBSCAN(eps=2.0, min_samples=15)
+    # db_labels = dbscan.fit_predict(X_pca)
+    # db_metrics = evaluate_clustering(X_pca, db_labels)
+    # n_noise = np.sum(db_labels == -1)
+    # n_db_clusters = db_metrics['有效簇数']
+    # print(f"    DBSCAN → 识别{n_db_clusters}个簇, 噪声点{n_noise}个, "
+    #       f"CH={db_metrics['CH指数']}, 轮廓={db_metrics['轮廓系数']}, DB={db_metrics['DB指数']}")
 
     # 汇总对比表
     compare_df = pd.DataFrame([
         {"模型": "K-Means", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
         {"模型": "层次聚类", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
         {"模型": "GMM", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
-        {"模型": "DBSCAN", "聚类数": "-", "CH指数": "-", "轮廓系数": "-", "DB指数": "-", "备注": "数据密度均匀，未识别有效簇"}
+        # {"模型": "DBSCAN", "聚类数": "-", "CH指数": "-", "轮廓系数": "-", "DB指数": "-", "备注": "数据密度均匀，未识别有效簇"}
     ])
     compare_df.to_csv(CLUSTER_COMPARE_CSV, index=False, encoding='utf_8_sig')
     print(f"\n  聚类模型对比结果：")
@@ -411,61 +401,7 @@ def train_product_cluster():
     return data
 
 
-def train_user_cluster():
-    """========================================
-    附加实验：用户聚类分析
-    ========================================"""""
-
-    print("\n" + "=" * 60)
-    print("  用户聚类分析训练（基于用户属性特征）")
-    print("=" * 60)
-
-    data = load_data_from_mysql()
-
-    print(f"\n--- 用户聚类特征 ---")
-    print(f"  数值特征: {user_numeric}")
-    print(f"  类别特征: {user_categorical}")
-
-    X_dense, preprocessor, feature_names = preprocess_features(data, user_numeric, user_categorical)
-    X_pca, pca = apply_pca(X_dense, variance_threshold=0.95)
-
-    # K值搜索
-    k_range = range(2, 7)
-    sil_scores = []
-    for k in k_range:
-        km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(X_pca)
-        sil_scores.append(silhouette_score(X_pca, labels))
-    best_k = list(k_range)[np.argmax(sil_scores)]
-    print(f"  用户聚类最优K={best_k} (轮廓系数={max(sil_scores):.4f})")
-
-    # 最终聚类
-    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
-    data['user_cluster'] = kmeans.fit_predict(X_pca)
-
-    # 画像
-    user_profile_numeric = user_numeric + ['sales']
-    user_cluster_stats = data.groupby('user_cluster')[user_profile_numeric].mean().round(2)
-    print(f"\n  用户聚类各簇特征均值：")
-    print(user_cluster_stats.to_string())
-
-    # 各簇类别特征
-    for col in user_categorical:
-        print(f"\n【{col}】")
-        top_cat = data.groupby('user_cluster')[col].value_counts().groupby(level=0).head(2)
-        print(top_cat)
-
-    # 保存
-    user_cluster_csv = os.path.join(OUTPUT_CSV_DIR, "用户聚类结果.csv")
-    data.to_csv(user_cluster_csv, index=False, encoding='utf_8_sig')
-    print(f"\n  用户聚类结果已保存到 {user_cluster_csv}")
-
-    return data
-
 
 if __name__ == '__main__':
     # 商品聚类
     train_product_cluster()
-
-    # 用户聚类（不要了先）
-    # train_user_cluster()

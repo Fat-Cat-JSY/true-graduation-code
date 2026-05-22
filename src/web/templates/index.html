@@ -122,87 +122,71 @@ const chart7 = echarts.init(document.getElementById('chart7'));
 
 // 获取价格-商品数量-退货率分布数据
 fetch('/api/train_scatter')
-.then(res => {
-  if(!res.ok) throw new Error('接口请求错误：' + res.statusText);
-  return res.json();
-})
+.then(res => res.json())
 .then(result => {
-  const scatterData = result.data.map(item => [item.x, item.y, item.z]);
-  chart1.setOption({
-    grid: {left: '15%', right: '10%', bottom: '15%', top: '15%'},
-    title: {
-      text: '价格区间-月销量-退货率分布',
-      left: 'center',
-      textStyle: {color: '#fff', fontSize: 18}
-    },
-    xAxis: {
-      type: 'value',
-      name:'价格区间(元)',
-      nameTextStyle:{color:'#fff', fontSize:13},
-      axisLabel:{color:'#fff', fontSize:12,
-        formatter: function(value) {
-          if (value == 50) return "0-100元";
-          if (value == 150) return "100-200元";
-          if (value == 250) return "200-300元";
-          if (value == 350) return "300元以上";
-          return value;
-        }
-      },
-      axisLine:{lineStyle:{color:'#1fb2ff'}},
-      splitLine: {show: false}
-    },
-    yAxis: {
-      type: 'value',
-      name:'月销量(个)',
-      nameTextStyle:{color:'#fff', fontSize:13},
-      axisLabel:{color:'#fff', fontSize:12},
-      axisLine:{lineStyle:{color:'#1fb2ff'}},
-      splitNumber: 5
-    },
-    // 退货率颜色映射（红蓝渐变）
-    visualMap: {
-      min: 48,
-      max: 54,
-      calculable: true,
-      inRange: {color: ['#1fb2ff', '#ff4d4f']},
-      text: ['退货率高(%)','退货率低'],
-      textStyle: {color: '#fff'},
-      left: 10,
-      top: 'center'
-    },
-    tooltip: {
-      formatter: function(params) {
-        const xVal = params.value[0];
-        let priceBin = '';
-        if (xVal === 50) priceBin = '0-100元';
-        else if (xVal === 150) priceBin = '100-200元';
-        else if (xVal === 250) priceBin = '200-300元';
-        else if (xVal === 350) priceBin = '300元以上';
+  const data = result.data;
 
-        return `价格区间：${priceBin}<br/>
-                月销量：${params.value[1].toFixed(0)}个<br/>
-                退货率：${params.value[2].toFixed(2)}%`;
-      },
-      backgroundColor: 'rgba(10, 18, 48, 0.9)'
-    },
-    series: [
-      {
-        name: "价格区间统计",
-        type: 'scatter',
-        data: scatterData,
-        symbolSize: 40,  // 缩小符号大小，避免重叠
-        itemStyle: {
-          borderWidth: 2,
-          borderColor: '#fff'
-        }
-        // 已去除 markLine
+  // 按价格区间从低到高排序，手动定义顺序
+  const priceOrder = ['0-100元', '100-200元', '200-300元', '300元以上'];
+  const sorted = priceOrder
+    .map(bin => data.find(d => d.price_bin === bin))
+    .filter(Boolean);
+
+  chart1.setOption({
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(10,18,48,0.9)',
+      formatter: function(params) {
+        const d = params.data;
+        return `${d.name}<br/>商品数量：${d.value.toLocaleString()} 款<br/>月销售额：${d.totalMonthSale.toLocaleString()} 元<br/>退货率：${d.returnRate}%`;
       }
-    ]
+    },
+    legend: {textStyle: {color: '#fff'}, top: 5},
+    series: [{
+      name: '价格区间',
+      type: 'funnel',
+      left: '10%',
+      width: '80%',
+      top: 60,
+      bottom: 30,
+      minSize: '20%',
+      maxSize: '100%',
+      sort: 'none',          // ← 关键：不让ECharts按数值重排，保持你定义的顺序
+      gap: 4,
+      label: {
+        show: true,
+        position: 'inside',
+        formatter: function(params) {
+          const d = params.data;
+          return `{title|${d.name}}\n{count|${d.value.toLocaleString()} 款商品}\n{rate|退货率 ${d.returnRate}%}`;
+        },
+        rich: {
+          title: { fontSize: 16, fontWeight: 'bold', color: '#fff', lineHeight: 24 },
+          count: { fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 20 },
+          rate: { fontSize: 14, fontWeight: 'bold', color: '#ffd666', lineHeight: 22 }
+        }
+      },
+      itemStyle: {
+        borderColor: '#0a1230',
+        borderWidth: 2
+      },
+      emphasis: {
+        label: { fontSize: 16 }
+      },
+      data: sorted.map(d => ({
+        value: d.goods_count,
+        name: d.price_bin,
+        totalMonthSale: d.totalMonthSale,
+        returnRate: d.returnRate,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            {offset: 0, color: '#1a3a6c'},
+            {offset: 1, color: d.returnRate > 52 ? '#ff4d4f' : d.returnRate > 50 ? '#faad14' : '#52c41a'}
+          ])
+        }
+      }))
+    }]
   });
-})
-.catch(err => {
-  console.error('图表加载错误：', err);
-  alert('图表加载失败：' + err.message);
 });
 
 // 获取品牌分析数据

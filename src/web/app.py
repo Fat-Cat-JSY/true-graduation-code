@@ -74,16 +74,13 @@ def get_train_scatter():
     df = get_table_data("price_bin_analysis")
     if df is None or len(df) == 0:
         return jsonify({"code": 500, "msg": "获取数据失败"})
-    bin_to_x = {"0-100元": 50, "100-200元": 150, "200-300元": 250, "300元以上": 350}
     res = []
     for _, row in df.iterrows():
-        x_val = bin_to_x.get(row['price_bin'], 0)
         res.append({
-            "x": float(x_val), "y": float(row['goods_count']),
-            "z": float(row['return_rate']) * 100, "price_bin": row['price_bin'],
-            "total_month_sale": float(row['total_month_sale']),
-            "goods_count": float(row['goods_count']),
-            "return_rate": float(row['return_rate'])
+            "price_bin": row['price_bin'],
+            "goods_count": int(row['goods_count']),          # 商品数量
+            "totalMonthSale": int(row['total_month_sale']),   # 月销售额
+            "returnRate": round(float(row['return_rate']) * 100, 2)  # 退货率(%)
         })
     return jsonify({"code": 200, "data": res})
 
