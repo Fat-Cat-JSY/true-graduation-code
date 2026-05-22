@@ -64,11 +64,6 @@ reg_numeric = [
 ]
 reg_categorical = ['brand', 'upper_material', 'sole_material', 'close_style', 'style', 'season']
 
-
-# ❌ 移除 price, original_price, discount_rate — 价格信息泄漏
-# ✅ 新增5个目标编码 + 2个交叉编码，从训练集计算，避免数据泄漏
-
-
 def load_data():
     """从MySQL加载数据，基于业务逻辑重建原价（品牌溢价+材质成本+风格溢价+可控噪声）"""
     try:
