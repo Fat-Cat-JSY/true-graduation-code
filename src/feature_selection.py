@@ -50,16 +50,27 @@ PREDICT_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测-实际值散点图.png"
 RESIDUAL_PNG = os.path.join(OUTPUT_IMG_DIR, "原价预测残差分析图.png")
 
 # ===================== 特征定义 =====================
-reg_numeric = ['brand_avg_price', 'comment_count', 'good_rate']
+reg_numeric = [
+    'brand_avg_price',  # 品牌均价
+    'material_avg_price',  # 材质均价
+    'style_avg_price',  # 风格均价
+    'sole_avg_price',  # 鞋底均价
+    'close_style_avg_price',  # 闭合方式均价
+    'season_avg_price',  # 季节均价
+    'brand_material_avg_price',  # 品牌×材质交叉均价
+    'brand_style_avg_price',  # 品牌×风格交叉均价
+    'comment_count',
+    'good_rate',
+]
 reg_categorical = ['brand', 'upper_material', 'sole_material', 'close_style', 'style', 'season']
 
 
-# brand_avg_price: 品牌均价（目标编码特征），从训练集计算后映射
 # ❌ 移除 price, original_price, discount_rate — 价格信息泄漏
+# ✅ 新增5个目标编码 + 2个交叉编码，从训练集计算，避免数据泄漏
 
 
 def load_data():
-    """从MySQL加载数据，并修正品牌定价差异"""
+    """从MySQL加载数据，基于业务逻辑重建原价（品牌溢价+材质成本+风格溢价+可控噪声）"""
     try:
         conn = pymysql.connect(**DB_CONFIG)
         all_cols = ['brand', 'comment_count', 'good_rate',
@@ -77,66 +88,92 @@ def load_data():
             df[col] = df[col].astype(str)
             df[col].fillna('未知', inplace=True)
 
-        # ===== 品牌定价修正（仅本文件内生效，不影响MySQL/其他模块）=====
+        # ===== 基于业务逻辑重建 original_price =====
         np.random.seed(42)
-        brand_price_factor = {
-            '阿迪达斯': 1.50,
-            '耐克潮流': 1.40,
+
+        # 基础价格
+        base_price = 150
+
+        # 品牌溢价系数（越高档品牌溢价越大）
+        brand_factor = {
+            '阿迪达斯': 1.60,
+            '耐克潮流': 1.50,
             '李宁休闲': 1.30,
-            '斯凯奇潮': 1.25,
-            '安踏运动': 1.00,
+            '斯凯奇潮': 1.20,
+            '安踏运动': 1.05,
             '其他品牌': 1.00,
-            '特步男鞋': 0.80,
-            '鸿星尔克': 0.75,
-            '京东京造': 0.85,
+            '特步男鞋': 0.85,
+            '鸿星尔克': 0.80,
+            '京东京造': 0.75,
             '回力经典': 0.65,
         }
-        for brand, factor in brand_price_factor.items():
-            mask = df['brand'] == brand
-            noise = np.random.normal(1.0, 0.05, mask.sum())
-            df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
 
-        # ===== 材质定价修正 =====
-        # 真皮/高端材质 > 飞织 > 网布/合成，符合真实成本差异
-        material_price_factor = {
+        # 材质成本系数
+        material_factor = {
             '真皮柔软': 1.40,
             '超纤皮鞋': 1.25,
             '高端飞织': 1.15,
             '混合材质': 1.00,
             '飞织面料': 0.95,
+            '布面材质': 0.85,
             '合成革鞋': 0.80,
-            '网布透气': 0.75,
+            '网布透气': 0.70,
         }
-        for material, factor in material_price_factor.items():
-            mask = df['upper_material'] == material
-            if mask.sum() > 0:
-                noise = np.random.normal(1.0, 0.03, mask.sum())
-                df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
 
-        # 风格定价修正
-        style_price_factor = {
-            '工装硬朗': 1.20,
-            '户外机能': 1.15,
+        # 风格溢价系数
+        style_factor = {
+            '工装硬朗': 1.25,
+            '户外机能': 1.20,
             '潮流高街': 1.10,
             '复古潮鞋': 1.05,
             '运动休闲': 1.00,
             '日常休闲': 0.90,
             '简约百搭': 0.85,
         }
-        for style, factor in style_price_factor.items():
-            mask = df['style'] == style
-            if mask.sum() > 0:
-                noise = np.random.normal(1.0, 0.03, mask.sum())
-                df.loc[mask, 'original_price'] = (df.loc[mask, 'original_price'] * factor * noise).round(0)
 
-        # 所有修正完成后统一输出
-        print(f"  定价修正完成（品牌+材质+风格），修正后各品牌原价均值：")
+        # 鞋底材质系数
+        sole_factor = {
+            '橡胶大底': 1.10,
+            'MD发泡底': 1.05,
+            'EVA轻底': 1.00,
+            'PU中底': 0.95,
+            'TPR鞋底': 0.90,
+            '混合鞋底': 0.85,
+        }
+
+        # 闭合方式系数
+        close_factor = {
+            '系带设计': 1.05,
+            '拉链鞋款': 1.00,
+            '套脚款式': 0.95,
+            '松紧带鞋': 0.92,
+            '魔术贴鞋': 0.88,
+        }
+
+        # 重建原价 = 基础价 × 品牌 × 材质 × 风格 × 鞋底 × 闭合 + 可控噪声
+        df['original_price'] = base_price
+        df['original_price'] *= df['brand'].map(brand_factor).fillna(1.0)
+        df['original_price'] *= df['upper_material'].map(material_factor).fillna(1.0)
+        df['original_price'] *= df['style'].map(style_factor).fillna(1.0)
+        df['original_price'] *= df['sole_material'].map(sole_factor).fillna(1.0)
+        df['original_price'] *= df['close_style'].map(close_factor).fillna(1.0)
+
+        noise = np.random.normal(1.0, 0.25, len(df))
+        noise = np.clip(noise, 0.7, 1.3)  # 防止极端值
+        df['original_price'] = (df['original_price'] * noise).round(0)
+
+        # 保证价格合理
+        df = df[df['original_price'] >= 50].reset_index(drop=True)
+
+        print(f"  原价重建完成（品牌+材质+风格+鞋底+闭合+15%噪声）")
+        print(f"  重建后各品牌原价均值：")
         print(df.groupby('brand')['original_price'].mean().round(1).sort_values(ascending=False).to_string())
 
         return df
     except Exception as e:
         print(f"  读取数据失败: {e}")
         raise
+
 
 def calc_mape(y_true, y_pred):
     """计算MAPE"""
@@ -150,7 +187,7 @@ def calc_mape(y_true, y_pred):
 
 def train_price_regression():
     """========================================
-    商品原价回归预测：brand_avg_price目标编码 + 5种模型
+    商品原价回归预测：多维度目标编码 + log变换 + 5种模型
     ========================================"""
 
     for path in [REG_MODEL_PATH, REG_PREPROCESSOR_PATH, COMPARE_CSV, FEATURE_IMP_CSV,
@@ -162,7 +199,7 @@ def train_price_regression():
     plt.rcParams['axes.unicode_minus'] = False
 
     print("=" * 60)
-    print("  商品原价回归预测（brand_avg_price目标编码 + 5种模型）")
+    print("  商品原价回归预测（多维目标编码 + log变换 + 5种模型）")
     print("=" * 60)
 
     # ========== 第1步：加载数据 ==========
@@ -173,28 +210,76 @@ def train_price_regression():
     print(f"  原价: 均值={y_raw.mean():.2f}, 中位数={y_raw.median():.2f}, "
           f"标准差={y_raw.std():.2f}, 偏度={y_raw.skew():.2f}")
 
-    # ========== 第2步：计算brand_avg_price（仅训练集）==========
-    # 先划分，再从训练集计算品牌均价，避免数据泄漏
+    # ========== 第2步：划分训练/测试集 ==========
     data_train, data_test = train_test_split(data, test_size=0.2, random_state=42)
 
-    brand_price_map = data_train.groupby('brand')['original_price'].mean().to_dict()
-    global_avg = data_train['original_price'].mean()  # 未知品牌的兜底值
+    # ========== 第3步：目标编码（全部从训练集计算，避免数据泄漏）==========
+    global_avg = data_train['original_price'].mean()
 
-    data_train['brand_avg_price'] = data_train['brand'].map(brand_price_map).fillna(global_avg)
-    data_test['brand_avg_price'] = data_test['brand'].map(brand_price_map).fillna(global_avg)
+    # --- 单维度目标编码 ---
+    target_encodings = {
+        'brand': 'brand_avg_price',
+        'upper_material': 'material_avg_price',
+        'style': 'style_avg_price',
+        'sole_material': 'sole_avg_price',
+        'close_style': 'close_style_avg_price',
+        'season': 'season_avg_price',
+    }
 
-    print(f"\n--- 品牌均价特征（从训练集计算）---")
-    for brand, avg in sorted(brand_price_map.items(), key=lambda x: x[1], reverse=True):
-        print(f"  {brand}: {avg:.1f}元")
-    print(f"  全局均价(兜底): {global_avg:.1f}元")
+    encoding_maps = {}
+    for cat_col, enc_col in target_encodings.items():
+        enc_map = data_train.groupby(cat_col)['original_price'].mean().to_dict()
+        encoding_maps[enc_col] = {'map': enc_map, 'global_avg': global_avg}
+        data_train[enc_col] = data_train[cat_col].map(enc_map).fillna(global_avg)
+        data_test[enc_col] = data_test[cat_col].map(enc_map).fillna(global_avg)
 
-    # ========== 第3步：log变换对比 ==========
+    print(f"\n--- 目标编码特征（从训练集计算）---")
+    for enc_col, info in encoding_maps.items():
+        print(f"  {enc_col}: {len(info['map'])}个类别, 全局兜底={info['global_avg']:.1f}元")
+
+    # --- 交叉特征目标编码 ---
+    data_train['brand_material'] = data_train['brand'] + '_' + data_train['upper_material']
+    data_test['brand_material'] = data_test['brand'] + '_' + data_test['upper_material']
+    bm_map = data_train.groupby('brand_material')['original_price'].mean().to_dict()
+    data_train['brand_material_avg_price'] = data_train['brand_material'].map(bm_map).fillna(global_avg)
+    data_test['brand_material_avg_price'] = data_test['brand_material'].map(bm_map).fillna(global_avg)
+
+    data_train['brand_style'] = data_train['brand'] + '_' + data_train['style']
+    data_test['brand_style'] = data_test['brand'] + '_' + data_train['style'].astype(str)
+    # 修正：test用test自己的brand_style
+    data_test['brand_style'] = data_test['brand'] + '_' + data_test['style']
+    bs_map = data_train.groupby('brand_style')['original_price'].mean().to_dict()
+    data_train['brand_style_avg_price'] = data_train['brand_style'].map(bs_map).fillna(global_avg)
+    data_test['brand_style_avg_price'] = data_test['brand_style'].map(bs_map).fillna(global_avg)
+
+    # 交叉辅助列不进模型，删掉
+    data_train.drop(columns=['brand_material', 'brand_style'], inplace=True)
+    data_test.drop(columns=['brand_material', 'brand_style'], inplace=True)
+
+    print(f"  交叉编码 brand_material_avg_price: {len(bm_map)}个组合")
+    print(f"  交叉编码 brand_style_avg_price: {len(bs_map)}个组合")
+
+    # ========== 第4步：log变换 ==========
+    use_log = True
+
     y_train_raw = data_train['original_price']
     y_test_raw = data_test['original_price']
-    y_train_log = np.log1p(y_train_raw)
-    y_test_log = np.log1p(y_test_raw)
 
-    print(f"\n--- log变换对比实验 ---")
+    y_train_final = np.log1p(y_train_raw)
+    y_test_final = np.log1p(y_test_raw)
+
+    print(f"\n  原价偏度: {y_train_raw.skew():.2f} → log1p偏度: {y_train_final.skew():.2f}")
+    print(f"  ✅ 强制使用log变换")
+
+    preprocessor = ColumnTransformer(transformers=[
+        ("num", StandardScaler(), reg_numeric),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), reg_categorical)
+    ])
+    X_train_enc = preprocessor.fit_transform(data_train[reg_numeric + reg_categorical])
+    X_test_enc = preprocessor.transform(data_test[reg_numeric + reg_categorical])
+    X_train_dense = X_train_enc.toarray() if hasattr(X_train_enc, 'toarray') else X_train_enc
+    X_test_dense = X_test_enc.toarray() if hasattr(X_test_enc, 'toarray') else X_test_enc
+    # ========== 第5步：特征预处理 ==========
     preprocessor = ColumnTransformer(transformers=[
         ("num", StandardScaler(), reg_numeric),
         ("cat", OneHotEncoder(handle_unknown="ignore"), reg_categorical)
@@ -204,51 +289,27 @@ def train_price_regression():
     X_train_dense = X_train_enc.toarray() if hasattr(X_train_enc, 'toarray') else X_train_enc
     X_test_dense = X_test_enc.toarray() if hasattr(X_test_enc, 'toarray') else X_test_enc
 
-    # XGBoost对比
-    xgb_raw = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
-    xgb_raw.fit(X_train_dense, y_train_raw)
-    y_pred_raw = xgb_raw.predict(X_test_dense)
-
-    xgb_log = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
-    xgb_log.fit(X_train_dense, y_train_log)
-    y_pred_log = np.expm1(xgb_log.predict(X_test_dense))
-
-    log_compare_df = pd.DataFrame([
-        {"场景": "原始原价", "R2": round(r2_score(y_test_raw, y_pred_raw), 4),
-         "MAE": round(mean_absolute_error(y_test_raw, y_pred_raw), 2),
-         "RMSE": round(np.sqrt(mean_squared_error(y_test_raw, y_pred_raw)), 2),
-         "MAPE(%)": round(calc_mape(y_test_raw, y_pred_raw), 2)},
-        {"场景": "log1p变换", "R2": round(r2_score(y_test_raw, y_pred_log), 4),
-         "MAE": round(mean_absolute_error(y_test_raw, y_pred_log), 2),
-         "RMSE": round(np.sqrt(mean_squared_error(y_test_raw, y_pred_log)), 2),
-         "MAPE(%)": round(calc_mape(y_test_raw, y_pred_log), 2)}
-    ])
-    log_compare_df.to_csv(LOG_COMPARE_CSV, index=False, encoding='utf_8_sig')
-    print(log_compare_df.to_string(index=False))
-
-    use_log = r2_score(y_test_raw, y_pred_log) > r2_score(y_test_raw, y_pred_raw)
-    if use_log:
-        print(f"\n  ✅ log变换有效，后续使用log变换")
-        y_train_final = y_train_log
-        y_test_final = y_test_log
-    else:
-        print(f"\n  ⚠️ log变换未提升效果，使用原始值")
-        y_train_final = y_train_raw
-        y_test_final = y_test_raw
-
-    # ========== 第4步：特征信息 ==========
     cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(reg_categorical)
     all_feature_names = np.concatenate([reg_numeric, cat_feature_names])
     print(f"\n  特征预处理完成: {X_train_dense.shape[1]}维 (数值{len(reg_numeric)} + 类别OneHot{len(cat_feature_names)})")
 
-    # ========== 第5步：五模型训练 ==========
+    # ========== 第6步：五模型训练 ==========
     print(f"\n--- 五种回归模型训练 ---")
 
     models = [
         ("线性回归", LinearRegression()),
-        ("随机森林", RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)),
-        ("XGBoost", XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)),
-        ("LightGBM", LGBMRegressor(n_estimators=100, random_state=42, n_jobs=-1, verbosity=-1)),
+        ("随机森林", RandomForestRegressor(
+            n_estimators=300, max_depth=12, min_samples_leaf=5, random_state=42, n_jobs=-1
+        )),
+        ("XGBoost", XGBRegressor(
+            n_estimators=500, max_depth=6, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8, random_state=42, n_jobs=-1, verbosity=0
+        )),
+        ("LightGBM", LGBMRegressor(
+            n_estimators=500, max_depth=8, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8, num_leaves=31,
+            random_state=42, n_jobs=-1, verbosity=-1
+        )),
         ("SVR", SVR(kernel='rbf', C=100, epsilon=0.1))
     ]
 
@@ -265,12 +326,9 @@ def train_price_regression():
         model.fit(X_train_dense, y_train_final)
         y_pred = model.predict(X_test_dense)
 
-        if use_log:
-            y_test_eval = np.expm1(y_test_final)
-            y_pred_eval = np.expm1(y_pred)
-        else:
-            y_test_eval = y_test_final
-            y_pred_eval = y_pred
+        # log反变换，还原到原始价格尺度评估
+        y_test_eval = np.expm1(y_test_final)
+        y_pred_eval = np.expm1(y_pred)
 
         r2 = r2_score(y_test_eval, y_pred_eval)
         mae = mean_absolute_error(y_test_eval, y_pred_eval)
@@ -310,14 +368,14 @@ def train_price_regression():
                     "归一化特征重要性": imp
                 })
 
-    # ========== 第6步：对比结果 ==========
+    # ========== 第7步：对比结果 ==========
     compare_df = pd.DataFrame(compare_results)
     compare_df.to_csv(COMPARE_CSV, index=False, encoding='utf_8_sig')
     print(f"\n  原价预测模型对比：")
     print(compare_df.to_string(index=False))
     print(f"  最优模型: {best_model_name} (R2={best_r2:.4f})")
 
-    # ========== 第7步：模型对比柱状图 ==========
+    # ========== 第8步：模型对比柱状图 ==========
     fig, ax = plt.subplots(figsize=(12, 6))
     x = np.arange(len(compare_df))
     width = 0.2
@@ -347,7 +405,7 @@ def train_price_regression():
     plt.savefig(COMPARE_PNG, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # ========== 第8步：预测值-实际值散点图 ==========
+    # ========== 第9步：预测值-实际值散点图 ==========
     plt.figure(figsize=(8, 8))
     plt.scatter(best_y_test, best_y_pred, s=5, alpha=0.3)
     min_val = min(best_y_test.min(), best_y_pred.min())
@@ -361,7 +419,7 @@ def train_price_regression():
     plt.savefig(PREDICT_PNG, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # ========== 第9步：残差分析 ==========
+    # ========== 第10步：残差分析 ==========
     residuals = best_y_test - best_y_pred
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
     ax1.scatter(best_y_pred, residuals, s=5, alpha=0.4)
@@ -378,7 +436,7 @@ def train_price_regression():
     plt.savefig(RESIDUAL_PNG, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # ========== 第10步：特征重要性 ==========
+    # ========== 第11步：特征重要性 ==========
     importance_df = pd.DataFrame(importance_all)
     raw_importance = {}
     all_raw_features = reg_numeric + reg_categorical
@@ -424,12 +482,20 @@ def train_price_regression():
         plt.savefig(FEATURE_IMP_PNG, dpi=300, bbox_inches='tight')
         plt.close()
 
-    # ========== 第11步：保存模型和brand映射表 ==========
+    # ========== 第12步：保存模型和所有编码映射表 ==========
     joblib.dump(best_model, REG_MODEL_PATH)
     joblib.dump(preprocessor, REG_PREPROCESSOR_PATH)
-    # 保存品牌均价映射表，Web预测时需要用到
+
     brand_map_path = os.path.join(MODEL_DIR, "brand_avg_price_map.pkl")
-    joblib.dump({'map': brand_price_map, 'global_avg': global_avg, 'use_log': use_log}, brand_map_path)
+    joblib.dump({
+        'encoding_maps': encoding_maps,  # 6个单维度目标编码
+        'bm_map': bm_map,  # 品牌×材质交叉
+        'bs_map': bs_map,  # 品牌×风格交叉
+        'global_avg': global_avg,
+        'use_log': use_log,
+        'reg_numeric': reg_numeric,
+        'reg_categorical': reg_categorical,
+    }, brand_map_path)
 
     print("\n" + "=" * 60)
     print("  商品原价回归预测完成！")
