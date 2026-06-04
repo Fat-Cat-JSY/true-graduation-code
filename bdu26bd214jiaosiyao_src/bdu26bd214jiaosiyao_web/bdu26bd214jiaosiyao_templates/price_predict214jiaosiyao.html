@@ -50,12 +50,12 @@
 <body>
   <div class="container">
     <div class="header">
-      💰 商品原价智能预测
+      商品原价预测
       <button class="back-btn" onclick="window.location.href='/'">返回数据分析大屏 →</button>
     </div>
 
-    <!-- ===== 商品属性 ===== -->
-    <div class="section-title">📦 商品属性</div>
+    <!-- 商品属性 -->
+    <div class="section-title">商品属性</div>
     <div class="form-row">
       <div class="form-item">
         <label>商品品牌：</label>
@@ -133,7 +133,7 @@
       </div>
     </div>
 
-    <!-- ===== 商品评价 ===== -->
+    <!-- 商品评价 -->
     <div class="section-title">📊 商品评价</div>
     <div class="form-row">
       <div class="form-item">
@@ -180,7 +180,7 @@ function predict(){
   .then(result => {
     if(result.code === 200){
       document.getElementById('predicted_price').innerText = result.predicted_price.toFixed(2);
-      document.getElementById('info_text').innerText = '基于商品属性与市场表现特征预测';
+      document.getElementById('info_text').innerText = '基于商品属性预测';
     }else{
       alert('预测失败：' + result.msg);
     }

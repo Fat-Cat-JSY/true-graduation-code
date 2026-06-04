@@ -10,10 +10,9 @@ from pyspark.sql.functions import *
 from config import *
 
 # 配置参数
-hive_table_name = "nanxie_clean"
-result_save_path = "/bishe/nanxie/analysis_result_hive"
+hive_table_name214jiaosiyao = "nanxie_clean"
+result_save_path214jiaosiyao = "/bishe/nanxie/analysis_result_hive"
 
-# 初始化连接Hive的Spark会话
 spark = SparkSession.builder \
     .appName("nanxie_hive_mysql") \
     .master("local[*]") \
@@ -23,12 +22,12 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 print("  Spark初始化完成，连接Hive...")
-df = spark.sql(f"SELECT * FROM {hive_table_name} WHERE brand IS NOT NULL AND brand != 'brand'")
+df = spark.sql(f"SELECT * FROM {hive_table_name214jiaosiyao} WHERE brand IS NOT NULL AND brand != 'brand'")
 print(f"  从Hive读取成功！总数据量：{df.count()} 行")
 df.createOrReplaceTempView("clean_shoes")
 
-# 分析1：品牌维度统计
-print("\n===== 【分析1：不同品牌核心指标】=====")
+# 分析1：品牌维度
+print("\n分析1：不同品牌核心指标")
 brand_analysis = spark.sql("""
 SELECT 
     brand,
@@ -162,5 +161,5 @@ price_bin_analysis.coalesce(1).write.csv(
     mode="overwrite"
 )
 
-print(f"\n  全量分析完成！所有结果都已经导出到 /home/analysis/ 目录下")
+print("\n分析完成，结果已导出")
 spark.stop()

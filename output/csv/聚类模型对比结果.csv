@@ -1,5 +1,0 @@
-﻿模型,聚类数,CH指数,轮廓系数,DB指数,备注
-K-Means,4,Ellipsis,Ellipsis,Ellipsis,
-层次聚类,4,Ellipsis,Ellipsis,Ellipsis,
-GMM,4,Ellipsis,Ellipsis,Ellipsis,
-DBSCAN,-,-,-,-,数据密度均匀，未识别有效簇

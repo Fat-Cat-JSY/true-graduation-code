@@ -14,63 +14,61 @@ import joblib
 import os
 import pymysql
 
-# ===================== MySQL 配置 =====================
-from config import MYSQL_HOST, MYSQL_USER, MYSQL_PWD, MYSQL_DB
+#  MySQL 配置
+from config import MYSQL_HOST214jiaosiyao, MYSQL_USER214jiaosiyao, MYSQL_PWD214jiaosiyao, MYSQL_DB214jiaosiyao
 
-DB_CONFIG = {
-    "host": MYSQL_HOST,
-    "user": MYSQL_USER,
-    "password": MYSQL_PWD,
-    "database": MYSQL_DB,
+DB_CONFIG214jiaosiyao = {
+    "host": MYSQL_HOST214jiaosiyao,
+    "user": MYSQL_USER214jiaosiyao,
+    "password": MYSQL_PWD214jiaosiyao,
+    "database": MYSQL_DB214jiaosiyao,
     "port": 3306
 }
-TABLE_NAME = "clean_shoe_train_data"
+TABLE_NAME214jiaosiyao = "clean_shoe_train_data"
 
-# ===================== 路径配置 =====================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(BASE_DIR, "..", "models")
-OUTPUT_CSV_DIR = os.path.join(BASE_DIR, "..", "output", "csv")
-OUTPUT_IMG_DIR = os.path.join(BASE_DIR, "..", "output", "images")
+# 路径配置
+BASE_DIR214jiaosiyao = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR214jiaosiyao = os.path.join(BASE_DIR214jiaosiyao, "..", "bdu26bd214jiaosiyao_models")
+OUTPUT_CSV_DIR214jiaosiyao = os.path.join(BASE_DIR214jiaosiyao, "..", "bdu26bd214jiaosiyao_output", "bdu26bd214jiaosiyao_csv")
+OUTPUT_IMG_DIR214jiaosiyao = os.path.join(BASE_DIR214jiaosiyao, "..", "bdu26bd214jiaosiyao_output", "bdu26bd214jiaosiyao_images")
 
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(OUTPUT_CSV_DIR, exist_ok=True)
-os.makedirs(OUTPUT_IMG_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR214jiaosiyao, exist_ok=True)
+os.makedirs(OUTPUT_CSV_DIR214jiaosiyao, exist_ok=True)
+os.makedirs(OUTPUT_IMG_DIR214jiaosiyao, exist_ok=True)
 
-KMEANS_MODEL_PATH = os.path.join(MODEL_DIR, "kmeans_cluster.pkl")
-PREPROCESSOR_PATH = os.path.join(MODEL_DIR, "preprocessor.pkl")
-PCA_MODEL_PATH = os.path.join(MODEL_DIR, "pca.pkl")
+KMEANS_MODEL_PATH214jiaosiyao = os.path.join(MODEL_DIR214jiaosiyao, "kmeans_cluster.pkl")
+PREPROCESSOR_PATH214jiaosiyao = os.path.join(MODEL_DIR214jiaosiyao, "preprocessor.pkl")
+PCA_MODEL_PATH214jiaosiyao = os.path.join(MODEL_DIR214jiaosiyao, "pca.pkl")
 
-ELBOW_PNG = os.path.join(OUTPUT_IMG_DIR, "K-Means肘部法则与轮廓系数图.png")
-TSNE_PNG = os.path.join(OUTPUT_IMG_DIR, "t-SNE聚类可视化.png")
-BOXPLOT_PNG = os.path.join(OUTPUT_IMG_DIR, "各聚类簇月销量箱线图.png")
-SCATTER_PNG = os.path.join(OUTPUT_IMG_DIR, "原价-月销量聚类散点图.png")
-PROFILE_PNG = os.path.join(OUTPUT_IMG_DIR, "聚类簇特征雷达图.png")
+ELBOW_PNG214jiaosiyao = os.path.join(OUTPUT_IMG_DIR214jiaosiyao, "K-Means肘部法则与轮廓系数图.png")
+TSNE_PNG214jiaosiyao = os.path.join(OUTPUT_IMG_DIR214jiaosiyao, "t-SNE聚类可视化.png")
+BOXPLOT_PNG214jiaosiyao = os.path.join(OUTPUT_IMG_DIR214jiaosiyao, "各聚类簇月销量箱线图.png")
+SCATTER_PNG214jiaosiyao = os.path.join(OUTPUT_IMG_DIR214jiaosiyao, "原价-月销量聚类散点图.png")
+PROFILE_PNG214jiaosiyao = os.path.join(OUTPUT_IMG_DIR214jiaosiyao, "聚类簇特征雷达图.png")
 
-CLUSTER_COMPARE_CSV = os.path.join(OUTPUT_CSV_DIR, "聚类模型对比结果.csv")
-CLUSTER_DATA_CSV = os.path.join(OUTPUT_CSV_DIR, "聚类后商品数据.csv")
-CLUSTER_STAT_CSV = os.path.join(OUTPUT_CSV_DIR, "聚类簇特征均值.csv")
-PCA_COMPARE_CSV = os.path.join(OUTPUT_CSV_DIR, "PCA降维对比结果.csv")
+CLUSTER_COMPARE_CSV214jiaosiyao = os.path.join(OUTPUT_CSV_DIR214jiaosiyao, "聚类模型对比结果.csv")
+CLUSTER_DATA_CSV214jiaosiyao = os.path.join(OUTPUT_CSV_DIR214jiaosiyao, "聚类后商品数据.csv")
+CLUSTER_STAT_CSV214jiaosiyao = os.path.join(OUTPUT_CSV_DIR214jiaosiyao, "聚类簇特征均值.csv")
+PCA_COMPARE_CSV214jiaosiyao = os.path.join(OUTPUT_CSV_DIR214jiaosiyao, "PCA降维对比结果.csv")
 
-# ===================== 特征定义 =====================
-# 商品聚类特征（仅商品属性，不含用户特征和is_return）
+# 商品聚类特征
 product_numeric = ['price', 'original_price', 'discount_rate', 'good_rate', 'comment_count']
 product_categorical = ['brand', 'upper_material', 'sole_material', 'style', 'season']
 
-# 用户聚类特征（仅用户属性）
+# 用户聚类特征
 user_numeric = ['user_age', 'order_hour']
 user_categorical = ['user_gender', 'province', 'is_plus']
 
 
-def load_data_from_mysql():
+def load_data_from_mysql214jiaosiyao():
     """从MySQL读取清洗后的全量数据"""
     try:
-        conn = pymysql.connect(**DB_CONFIG)
-        query = f"SELECT * FROM {TABLE_NAME}"
+        conn = pymysql.connect(**DB_CONFIG214jiaosiyao)
+        query = f"SELECT * FROM {TABLE_NAME214jiaosiyao}"
         df = pd.read_sql(query, conn)
         conn.close()
         print(f"  从MySQL读取到 {len(df)} 条数据")
 
-        # 数据类型确保
         for col in product_numeric + user_numeric + ['month_sale']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -78,7 +76,6 @@ def load_data_from_mysql():
             if col in df.columns:
                 df[col] = df[col].astype(str)
 
-        # 缺失值填充
         for col in product_numeric + user_numeric:
             if col in df.columns:
                 df[col].fillna(df[col].median(), inplace=True)
@@ -93,8 +90,8 @@ def load_data_from_mysql():
         raise
 
 
-def preprocess_features(df, numeric_cols, categorical_cols):
-    """特征预处理：标准化 + OneHot编码"""
+def preprocess_features214jiaosiyao(df, numeric_cols, categorical_cols):
+    """特征预处理"""
     preprocessor = ColumnTransformer(transformers=[
         ("num", StandardScaler(), numeric_cols),
         ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols)
@@ -108,7 +105,7 @@ def preprocess_features(df, numeric_cols, categorical_cols):
     return X_dense, preprocessor, all_feature_names
 
 
-def apply_pca(X_dense, variance_threshold=0.95):
+def apply_pca214jiaosiyao(X_dense, variance_threshold=0.95):
     """PCA降维"""
     pca = PCA(n_components=variance_threshold, random_state=42)
     X_pca = pca.fit_transform(X_dense)
@@ -117,9 +114,9 @@ def apply_pca(X_dense, variance_threshold=0.95):
     return X_pca, pca
 
 
-def evaluate_clustering(X, labels):
-    """计算三个聚类评估指标"""
-    valid_mask = labels != -1  # 排除DBSCAN的噪声点
+def evaluate_clustering214jiaosiyao(X, labels):
+    """计算聚类评估指标"""
+    valid_mask = labels != -1
     n_clusters = len(np.unique(labels[valid_mask]))
     if n_clusters < 2:
         return {"CH指数": 0, "轮廓系数": 0, "DB指数": 0, "有效簇数": n_clusters}
@@ -133,8 +130,8 @@ def evaluate_clustering(X, labels):
     }
 
 
-def plot_elbow_and_silhouette(X_pca, k_range):
-    """肘部法则 + 轮廓系数法双图"""
+def plot_elbow_and_silhouette214jiaosiyao(X_pca, k_range):
+    """肘部法则+轮廓系数"""
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
 
@@ -160,14 +157,14 @@ def plot_elbow_and_silhouette(X_pca, k_range):
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(ELBOW_PNG, dpi=300, bbox_inches='tight')
+    plt.savefig(ELBOW_PNG214jiaosiyao, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  肘部法则与轮廓系数图已保存")
 
 
-def plot_tsne(X_pca, labels, title_suffix=""):
+def plot_tsne214jiaosiyao(X_pca, labels, title_suffix=""):
     """t-SNE二维可视化"""
-    print("  正在计算t-SNE降维（可能需要几十秒）...")
+    print("  正在计算t-SNE降维...")
     tsne = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
     X_tsne = tsne.fit_transform(X_pca)
 
@@ -183,37 +180,35 @@ def plot_tsne(X_pca, labels, title_suffix=""):
     plt.xlabel('t-SNE维度1', fontsize=12)
     plt.ylabel('t-SNE维度2', fontsize=12)
     plt.tight_layout()
-    plt.savefig(TSNE_PNG, dpi=300, bbox_inches='tight')
+    plt.savefig(TSNE_PNG214jiaosiyao, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  t-SNE可视化图已保存")
 
 
-def label_cluster_business(row):
-    """根据簇特征均值给每个簇赋予业务标签"""
+def label_cluster_business214jiaosiyao(row):
+    """根据簇特征均值给每个簇打标签"""
     price = row['price']
     original_price = row['original_price']
     discount = row['discount_rate']
     comments = row['comment_count']
 
     if comments >= 8000:
-        return "高流量热门款"  # 评论数异常高
+        return "高流量热门款"
     elif price >= 250:
-        return "高端品质款"  # 高价段
+        return "高端品质款"
     elif discount < 75:
-        return "打折促销款"  # 折扣力度大（折扣率低=打折狠）
+        return "打折促销款"
     else:
-        return "平价常规款"  # 折扣少、价格适中
+        return "平价常规款"
 
 
-def train_product_cluster():
-    """========================================
-    主流程：商品聚类全流程训练
-    ========================================"""
+def train_product_cluster214jiaosiyao():
+    # 商品聚类主流程
 
-    # ---------- 清理旧文件 ----------
-    for path in [KMEANS_MODEL_PATH, PREPROCESSOR_PATH, PCA_MODEL_PATH,
-                 ELBOW_PNG, TSNE_PNG, BOXPLOT_PNG, SCATTER_PNG, PROFILE_PNG,
-                 CLUSTER_COMPARE_CSV, CLUSTER_DATA_CSV, CLUSTER_STAT_CSV, PCA_COMPARE_CSV]:
+    # 清理旧文件
+    for path in [KMEANS_MODEL_PATH214jiaosiyao, PREPROCESSOR_PATH214jiaosiyao, PCA_MODEL_PATH214jiaosiyao,
+                 ELBOW_PNG214jiaosiyao, TSNE_PNG214jiaosiyao, BOXPLOT_PNG214jiaosiyao, SCATTER_PNG214jiaosiyao, PROFILE_PNG214jiaosiyao,
+                 CLUSTER_COMPARE_CSV214jiaosiyao, CLUSTER_DATA_CSV214jiaosiyao, CLUSTER_STAT_CSV214jiaosiyao, PCA_COMPARE_CSV214jiaosiyao]:
         if os.path.exists(path):
             os.remove(path)
 
@@ -221,122 +216,107 @@ def train_product_cluster():
     print("  商品聚类分析训练（基于商品属性特征 + PCA降维）")
     print("=" * 60)
 
-    # ========== 第1步：加载数据 ==========
-    data = load_data_from_mysql()
+    # 第1步：加载数据
+    data = load_data_from_mysql214jiaosiyao()
 
-    # ========== 第2步：特征预处理 ==========
+    # 第2步：特征预处理
     print(f"\n--- 商品聚类特征 ---")
     print(f"  数值特征: {product_numeric}")
     print(f"  类别特征: {product_categorical}")
-    X_dense, preprocessor, feature_names = preprocess_features(data, product_numeric, product_categorical)
+    X_dense, preprocessor, feature_names = preprocess_features214jiaosiyao(data, product_numeric, product_categorical)
 
-    # ========== 第3步：PCA降维 ==========
+    # 第3步：PCA降维
     print(f"\n--- PCA降维 ---")
-    X_pca, pca = apply_pca(X_dense, variance_threshold=0.95)
+    X_pca, pca = apply_pca214jiaosiyao(X_dense, variance_threshold=0.95)
 
-    # ========== 第4步：最优K值确定 ==========
+    # 第4步：最优K值确定
     print(f"\n--- 最优K值确定 ---")
     k_range = range(2, 9)
-    plot_elbow_and_silhouette(X_pca, k_range)
+    plot_elbow_and_silhouette214jiaosiyao(X_pca, k_range)
 
-    # 手动覆盖：
+    # 指定K值
     best_k = 4
 
-    # ========== 第5步：多模型训练与评估 ==========
+    # 第5步：多模型训练与评估
     print(f"\n--- 多模型对比训练 (K={best_k}) ---")
 
-    # 5.1 K-Means
-    print("  ▶ K-Means 训练中...")
+    # K-Means
+    print("  K-Means 训练中...")
     kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
     km_labels = kmeans.fit_predict(X_pca)
-    km_metrics = evaluate_clustering(X_pca, km_labels)
+    km_metrics = evaluate_clustering214jiaosiyao(X_pca, km_labels)
     print(f"    K-Means → CH={km_metrics['CH指数']}, 轮廓={km_metrics['轮廓系数']}, DB={km_metrics['DB指数']}")
 
-    # 5.2 层次聚类
-    print("  ▶ 层次聚类 训练中...")
+    # 层次聚类
+    print("  层次聚类 训练中...")
     agg = AgglomerativeClustering(n_clusters=best_k)
     agg_labels = agg.fit_predict(X_pca)
-    agg_metrics = evaluate_clustering(X_pca, agg_labels)
+    agg_metrics = evaluate_clustering214jiaosiyao(X_pca, agg_labels)
     print(f"    层次聚类 → CH={agg_metrics['CH指数']}, 轮廓={agg_metrics['轮廓系数']}, DB={agg_metrics['DB指数']}")
 
-    # 5.3 GMM
-    print("  ▶ GMM 训练中...")
+    # GMM
+    print("  GMM 训练中...")
     gmm = GaussianMixture(n_components=best_k, random_state=42)
     gmm_labels = gmm.fit_predict(X_pca)
-    gmm_metrics = evaluate_clustering(X_pca, gmm_labels)
+    gmm_metrics = evaluate_clustering214jiaosiyao(X_pca, gmm_labels)
     print(f"    GMM → CH={gmm_metrics['CH指数']}, 轮廓={gmm_metrics['轮廓系数']}, DB={gmm_metrics['DB指数']}")
-
-    # # 5.4 DBSCAN
-    # print("  ▶ DBSCAN 训练中...")
-    # dbscan = DBSCAN(eps=2.0, min_samples=15)
-    # db_labels = dbscan.fit_predict(X_pca)
-    # db_metrics = evaluate_clustering(X_pca, db_labels)
-    # n_noise = np.sum(db_labels == -1)
-    # n_db_clusters = db_metrics['有效簇数']
-    # print(f"    DBSCAN → 识别{n_db_clusters}个簇, 噪声点{n_noise}个, "
-    #       f"CH={db_metrics['CH指数']}, 轮廓={db_metrics['轮廓系数']}, DB={db_metrics['DB指数']}")
 
     # 汇总对比表
     compare_df = pd.DataFrame([
-        {"模型": "K-Means", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
-        {"模型": "层次聚类", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
-        {"模型": "GMM", "聚类数": best_k, "CH指数": ..., "轮廓系数": ..., "DB指数": ...},
-        # {"模型": "DBSCAN", "聚类数": "-", "CH指数": "-", "轮廓系数": "-", "DB指数": "-", "备注": "数据密度均匀，未识别有效簇"}
+        {"模型": "K-Means", "聚类数": best_k, **km_metrics},
+        {"模型": "层次聚类", "聚类数": best_k, **agg_metrics},
+        {"模型": "GMM", "聚类数": best_k, **gmm_metrics},
     ])
-    compare_df.to_csv(CLUSTER_COMPARE_CSV, index=False, encoding='utf_8_sig')
+    compare_df.to_csv(CLUSTER_COMPARE_CSV214jiaosiyao, index=False, encoding='utf_8_sig')
     print(f"\n  聚类模型对比结果：")
     print(compare_df.to_string(index=False))
 
-    # ========== 第6步：PCA降维前后对比实验 ==========
+    # 第6步：PCA降维前后对比实验
     print(f"\n--- PCA降维对比实验 ---")
     km_before = KMeans(n_clusters=best_k, random_state=42, n_init=10)
     labels_before = km_before.fit_predict(X_dense)
-    metrics_before = evaluate_clustering(X_dense, labels_before)
+    metrics_before = evaluate_clustering214jiaosiyao(X_dense, labels_before)
 
     km_after = KMeans(n_clusters=best_k, random_state=42, n_init=10)
     labels_after = km_after.fit_predict(X_pca)
-    metrics_after = evaluate_clustering(X_pca, labels_after)
+    metrics_after = evaluate_clustering214jiaosiyao(X_pca, labels_after)
 
     pca_compare_df = pd.DataFrame([
-        {"场景": "PCA降维前", "特征维度": X_dense.shape[1],
-         "CH指数": metrics_before["CH指数"], "轮廓系数": metrics_before["轮廓系数"], "DB指数": metrics_before["DB指数"]},
-        {"场景": "PCA降维后", "特征维度": X_pca.shape[1],
-         "CH指数": metrics_after["CH指数"], "轮廓系数": metrics_after["轮廓系数"], "DB指数": metrics_after["DB指数"]}
+        {"场景": "PCA降维前", "特征维度": X_dense.shape[1], **metrics_before},
+        {"场景": "PCA降维后", "特征维度": X_pca.shape[1], **metrics_after}
     ])
-    pca_compare_df.to_csv(PCA_COMPARE_CSV, index=False, encoding='utf_8_sig')
+    pca_compare_df.to_csv(PCA_COMPARE_CSV214jiaosiyao, index=False, encoding='utf_8_sig')
     print(f"  PCA对比结果：")
     print(pca_compare_df.to_string(index=False))
 
-    # ========== 第7步：最终聚类结果（选用K-Means on PCA） ==========
-    print(f"\n--- 最终聚类结果（K-Means, K={best_k}, PCA降维空间）---")
+    # 第7步：最终聚类结果
+    print(f"\n--- 最终聚类结果（K-Means, K={best_k}）---")
     data['cluster'] = km_labels
     print(f"  各簇样本量：")
     print(data['cluster'].value_counts().sort_index())
 
-    # ========== 第8步：聚类簇画像 ==========
+    # 第8步：聚类簇画像
     print(f"\n--- 聚类簇画像分析 ---")
     profile_numeric = product_numeric + ['sales']
     cluster_stats = data.groupby('cluster')[profile_numeric].mean().round(2)
-    cluster_stats['业务标签'] = cluster_stats.apply(label_cluster_business, axis=1)
-    cluster_stats.to_csv(CLUSTER_STAT_CSV, encoding='utf_8_sig')
-
+    cluster_stats['业务标签'] = cluster_stats.apply(label_cluster_business214jiaosiyao, axis=1)
+    cluster_stats.to_csv(CLUSTER_STAT_CSV214jiaosiyao, encoding='utf_8_sig')
     print(cluster_stats.to_string())
 
-    # 各簇类别特征分布
     print("\n各簇类别特征（占比最高的类别）：")
     for col in product_categorical:
         print(f"\n【{col}】")
         top_cat = data.groupby('cluster')[col].value_counts().groupby(level=0).head(2)
         print(top_cat)
 
-    # ========== 第9步：可视化 ==========
+    # 第9步：可视化
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
 
-    # 9.1 t-SNE可视化
-    plot_tsne(X_pca, km_labels)
+    # t-SNE可视化
+    plot_tsne214jiaosiyao(X_pca, km_labels)
 
-    # 9.2 各簇月销量箱线图
+    # 各簇月销量箱线图
     plt.figure(figsize=(10, 6))
     sns.boxplot(x='cluster', y='sales', data=data, palette='Set2')
     plt.xlabel('聚类簇编号', fontsize=13)
@@ -344,10 +324,10 @@ def train_product_cluster():
     plt.title('不同聚类簇的月销量分布对比', fontsize=16, pad=10)
     plt.tick_params(labelsize=11)
     plt.tight_layout()
-    plt.savefig(BOXPLOT_PNG, dpi=300, bbox_inches='tight')
+    plt.savefig(BOXPLOT_PNG214jiaosiyao, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # 9.3 原价-月销量散点图
+    # 原价-月销量散点图
     plt.figure(figsize=(10, 6))
     sns.scatterplot(x='original_price', y='sales', hue='cluster', data=data,
                     palette='Set2', s=30, alpha=0.5, edgecolor='white')
@@ -357,13 +337,12 @@ def train_product_cluster():
     plt.tick_params(labelsize=11)
     plt.legend(title='簇', fontsize=10)
     plt.tight_layout()
-    plt.savefig(SCATTER_PNG, dpi=300, bbox_inches='tight')
+    plt.savefig(SCATTER_PNG214jiaosiyao, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # 9.4 聚类簇特征雷达图
+    # 聚类簇特征雷达图
     radar_cols = ['price', 'discount_rate', 'good_rate', 'comment_count', 'sales']
     radar_stats = data.groupby('cluster')[radar_cols].mean()
-    # 归一化到0-1
     radar_norm = (radar_stats - radar_stats.min()) / (radar_stats.max() - radar_stats.min())
     labels_radar = ['价格', '折扣率', '好评率', '评价数', '月销量']
     angles = np.linspace(0, 2 * np.pi, len(labels_radar), endpoint=False).tolist()
@@ -382,26 +361,22 @@ def train_product_cluster():
     ax.set_title('各聚类簇特征雷达图', fontsize=16, pad=20)
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
     plt.tight_layout()
-    plt.savefig(PROFILE_PNG, dpi=300, bbox_inches='tight')
+    plt.savefig(PROFILE_PNG214jiaosiyao, dpi=300, bbox_inches='tight')
     plt.close()
 
-    # ========== 第10步：保存模型与结果 ==========
-    data.to_csv(CLUSTER_DATA_CSV, index=False, encoding='utf_8_sig')
-    joblib.dump(kmeans, KMEANS_MODEL_PATH)
-    joblib.dump(preprocessor, PREPROCESSOR_PATH)
-    joblib.dump(pca, PCA_MODEL_PATH)
+    # 第10步：保存模型与结果
+    data.to_csv(CLUSTER_DATA_CSV214jiaosiyao, index=False, encoding='utf_8_sig')
+    joblib.dump(kmeans, KMEANS_MODEL_PATH214jiaosiyao)
+    joblib.dump(preprocessor, PREPROCESSOR_PATH214jiaosiyao)
+    joblib.dump(pca, PCA_MODEL_PATH214jiaosiyao)
 
     print("\n" + "=" * 60)
     print("  商品聚类训练完成！")
-    print(f"  模型: {KMEANS_MODEL_PATH}, {PREPROCESSOR_PATH}, {PCA_MODEL_PATH}")
-    print(f"  结果: {CLUSTER_COMPARE_CSV}, {CLUSTER_DATA_CSV}, {CLUSTER_STAT_CSV}, {PCA_COMPARE_CSV}")
-    print(f"  图表: {ELBOW_PNG}, {TSNE_PNG}, {BOXPLOT_PNG}, {SCATTER_PNG}, {PROFILE_PNG}")
+    print(f"  模型: {KMEANS_MODEL_PATH214jiaosiyao}, {PREPROCESSOR_PATH214jiaosiyao}, {PCA_MODEL_PATH214jiaosiyao}")
+    print(f"  结果: {CLUSTER_COMPARE_CSV214jiaosiyao}, {CLUSTER_DATA_CSV214jiaosiyao}, {CLUSTER_STAT_CSV214jiaosiyao}, {PCA_COMPARE_CSV214jiaosiyao}")
     print("=" * 60)
-
     return data
 
 
-
 if __name__ == '__main__':
-    # 商品聚类
-    train_product_cluster()
+    train_product_cluster214jiaosiyao()
